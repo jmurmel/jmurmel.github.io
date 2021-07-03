@@ -36,7 +36,19 @@ img {
 </style>
 <article>
 <header>
-<h1>JMurmel</h1>
+<div style="background-color:lightblue;">
+  <div style="display:table-cell;float:left;align:top;width:50%;">
+    <h1>JMurmel</h1>
+  </div>
+  <div style="display:table-cell;width:50%;font-size:70%;">
+    <pre>(->> your-code
+  (macroexpand)
+  (lisp-to-java)
+  (java-to-bytecode)
+  (run-on-jvm))
+  ; ==> BRRRRR!!!</pre>
+  </div>
+</div>
 </header>
 <p>JMurmel is a lightweight JVM-based interpreter/ compiler for Murmel, a Lisp dialect inspired by a subset of Common Lisp.</p>
 <p>Download <a href="https://github.com/mayerrobert/jmurmel/releases/download/jmurmel-all-1.0/jmurmel-1.0.jar">JMurmel 1.0</a>
