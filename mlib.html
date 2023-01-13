@@ -37,14 +37,16 @@ mlib provides the following Common Lisp-like functions and macros:
     - [setf](#macro-setf), [incf, decf](#macro-incf-decf)
     - [push](#macro-push), [pop](#macro-pop)
 - numbers, characters
-    - [abs](#function-abs), [zerop](#function-zerop), [evenp](#function-evenp), [oddp](#function-oddp)
+    - [abs](#function-abs), [min](#function-min), [max](#function-max), [zerop](#function-zerop), [evenp](#function-evenp), [oddp](#function-oddp)
     - [char=](#function-char), [char](#function-char-1), [bit](#function-bit)
-    - [equal](#function-equal)
+    - [parse](#function-parse), [parse-integer](#function-parse-integer)
 - sequences
     - [elt](#function-elt), [copy-seq](#function-copy-seq), [length](#function-length)
     - [reverse](#function-reverse), [nreverse](#function-nreverse)
     - [remove-if](#function-remove-if), [remove](#function-remove)
     - [map](#function-map), [map-into](#function-map-into), [reduce](#function-reduce)
+- hash tables
+    - [gethash](#function-gethash), [remhash](#function-remhash), [maphash](#function-maphash)
 - higher order
     - [identity](#function-identity), [constantly](#function-constantly), [complement](#function-complement)
     - [every](#function-every), [some](#function-some), [notevery](#function-notevery), [notany](#function-notany)
@@ -52,7 +54,6 @@ mlib provides the following Common Lisp-like functions and macros:
     - [write-char](#function-write-char)
     - [terpri, prin1, princ, print](#function-terpri-prin1-princ-print), [pprint](#function-pprint)
 - misc
-    - [error](#function-error)
     - [time](#macro-time)
 
 functions and macros inspired by [Alexandria](https://alexandria.common-lisp.dev):
@@ -92,6 +93,8 @@ as well as the following additional functions and macros:
     - [*f, /f, +f, -f](#macro-f-f)
 - generators
     - [scan](#function-scan), [scan-multiple](#function-scan-multiple), [scan-concat](#function-scan-concat)
+- strings
+    - [string-trim](#function-string-trim), [string-replace](#function-string-replace), [string-split](#function-string-split), [string-join](#function-string-join)
 
 ## Description of functions and macros
 
@@ -182,13 +185,6 @@ the forms in that clause are evaluated as an implicit progn,
 and the values it returns are returned as the value of the typecase.
 
 If there is no otherwise-clause, typecase returns nil.
-
-### Function: error
-    (error formatstring args*) -> no return value
-
-Since: 1.3
-
-`error` aborts the current program.
 
 ### Function: caar..cdddr
     (c..r lst) -> result
@@ -537,6 +533,20 @@ Since: 1.1
 
 Return the absoute value of a number.
 
+### Function: min
+    (min number+) -> result
+
+Since: 1.4
+
+Return the smallest number of the given arguments.
+
+### Function: max
+    (max number+) -> result
+
+Since: 1.4
+
+Return the largest number of the given arguments.
+
 ### Function: zerop
     (zerop number) -> boolean
 
@@ -579,21 +589,26 @@ Since: 1.3
 
 Return the n-th bit of the bitvector `bv`, `n` is 0-based.
 
-### Function: equal
-    (equal a b) -> boolean
+### Function: parse
+    (parse result-type str [eof-obj [start [end]]]) -> result
 
-Since: 1.1
+Since: 1.4
 
-Return `t` if any of the following is true:
+Reads the token in `str` starting at `start` (which defaults to `0`),
+`parse-error` if the token is not of type `result-type`.
 
-- `a` and `b` are `eql`
-- `a` and `b` are strings that have the same text value
-- `a` and `b` are bitvectors whose elements are eql
-- `a` and `b` are conses whose car and cdr are `equal` respectively
+### Function: parse-integer
+    (parse-integer str [start [end]]) -> result
+
+Since: 1.4
+
+Reads the token in `str` starting at `start` (which defaults to `0`),
+`parse-error` if the token is not of type `integer`.
 
 ### Function: scan
     (scan start [step [endincl]])                 -> generator-function that returns subsequent numbers starting from `start` incrementing by `step` (default: 1)
     (scan seq-or-gen [start-idx [stop-idx-excl]]) -> generator-function that returns subsequent elements of the given sequence (list or vector) or generator
+    (scan hash-table)                             -> generator-function that returns subsequent (key . value) pairs of the given hash-table
 
 Since: 1.3
 
@@ -742,6 +757,24 @@ Otherwise if `from-end-p` is given and non-nil then
 of the `sequence` and subsequently with the previous result
 and the previous element, and `reduce` will return the last
 result from `func`.
+
+### Function: gethash
+    (gethash key hash [default]) -> object, was-present-p
+
+Since: 1.4
+
+### Function: remhash
+    (remhash key hash) -> was-present-p
+
+Since: 1.4
+
+### Function: maphash
+    (maphash function hash) -> nil
+
+Since: 1.4
+
+Similar to CL's `maphash` but modifying the hash-table
+from within `function` is not supported.
 
 ### Function: identity
     (identity object) -> object
@@ -966,6 +999,50 @@ Short circuiting thread-last
 
 Same as `->>` but if one function returns nil then the remaining
 functions are not called and the overall result is `nil`.
+
+### Function: string-trim
+    (string-trim str) -> result
+
+Since: 1.4
+
+Return a fresh immutable `simple-string`
+with leading and/ or trailing whitespace removed.
+
+Example usage:
+
+    (string-trim "  asdf   ") ; ==> "asdf"
+
+### Function: string-replace
+    (string-replace str srch replacement) -> result
+
+Since: 1.4
+
+Within `str` replace each occurrence of `srch` by `replacement`.
+Special character sequences such as `\t` and `\n` are NOT recognized
+and don't get special treatment.
+
+Example usage:
+
+    (string-replace "aaa aaa aaa" "aa" "b") ; ==> "ba ba ba"
+
+### Function: string-split
+    (string-split str regex) -> vector
+
+Since: 1.4
+
+Split `str` into a vector of simple strings.
+Within `regex` special character sequences such as `\t` and `\n` are recognized.
+
+Example usage:
+
+    (string-split "a b     c
+    d" "[ \\t\\n]")
+    ; ==> #("a" "b" "c" "d") 
+
+### Function: string-join
+    (string-join delim first-str . more-strings) -> string
+
+Since: 1.4
 
 ### Macro: with-accumulator
     (with-accumulator accumulator-name accumulator start-value-form forms*) -> result

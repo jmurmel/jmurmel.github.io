@@ -16,7 +16,8 @@ The file `murmel-langref.lisp` can be read as-is or run with:
 
 or transformed to Markdown:
 
-    $ sed -nf scripts/langref-to-md.sed murmel-langref.lisp > murmel-langref.md
+    $ sed -nf scripts/langref-to-md.sed murmel-langref.lisp \
+    > murmel-langref.md
 
 Murmel is WIP, please note the section
 [Known issues](#known-issues) at the end of this file.
@@ -37,6 +38,7 @@ Murmel is WIP, please note the section
 - [Logic, Predicates](#logic-predicates)
 - [Conses and lists](#conses-and-lists)
 - [Vectors, Sequences](#vectors-sequences)
+- [Hashtables](#hash-tables)
 - [I/O](#io)
 - [Misc](#misc)
 - [Time](#time)
@@ -145,6 +147,11 @@ Shorthand for a proper list
     '(a b c)              ; ==> (a b c)
 
 
+### Hashtables
+
+    #H(eql k1 v1 k2 v2 k3 v3)
+
+
 ## Comments 
 
 One line comments are started with `;`, i.e. everything between a semicolon
@@ -223,6 +230,18 @@ Largest acceptable vector index.
 
 ### most-positive-fixnum, most-negative-fixnum
 These global variables contain the smallest and largest fixnum value.
+
+
+### \*condition-handler\*
+
+Since: 1.4
+
+This variable can be set to a function of one parameter.
+If `*condition-handler*` is non-nil then it will be invoked in case of an error,
+the argument will be the condition describing the error.
+During invocation of the condition handler it will be disabled:
+if the current handler dynamically replaced a previous handler
+then the previous handler will be temporarily restored.
 
 
 ### REPL variables
@@ -306,7 +325,7 @@ Murmel's type system (and the corresponding host types) look like so:
           character               ; #\A                            -> java.lang.Character
 
           vector                  ; (make-array NN t t)            -> java.util.ArrayList
-                                  ; (make-array NN t CC)            -> java.util.ArrayList
+                                  ; (make-array NN t CC)           -> java.util.ArrayList
                                   ; makes an ArrayList w/ size NN and initial capacity CC
                                   ; java.util.List is acceptable for seqref and seqset
              simple-vector        ; (make-array NN t nil)          -> Object[]
@@ -320,12 +339,68 @@ Murmel's type system (and the corresponding host types) look like so:
                 simple-bit-vector ; (make-array NN 'bit nil)       -> boolean[]
                                   : #*0101                         -> boolean[]
 
+          hash-table              ; (make-hash-table [test [size]])
+                                  ; #H(eql one 1 two 2 three 3)     -> EqlMap
+                                  ; (make-hash-table ['eql [size]]) -> EqlMap
+                                  ; (make-hash-table ['equal [size]]) -> EqualMap
+                                  ; (make-hash-table 'eq [size])    -> java.util.IdentityHashMap
+                                  ; (make-hash-table 't [size])     -> java.util.HashMap
+                                  ; java.util.Map is acceptable for hashref, hashset, clrhash...
+
           function                ; (lambda (param) param)         -> Closure or MurmelFunction
 
           (list ::= cons | null)
           (sequence ::= list | vector)
 
-The above is a subset of CLtL2, see "2. Data Types" https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node15.html
+
+    ;; Murmel's condition type hierarchy is a subset of CL's condition type hierarchy,
+    ;; `error` and subtypes are pretty much the same. Murmel doesn't have multiple
+    ;; inheritance, though, and `reader-error` only extends `stream-error`.
+    ;; JMurmel maps conditions to Java exceptions as best as possible.
+
+          condition                           java.lang.Throwable
+              error                           java.lang.Exception
+
+                (murmel-error                 LambdaJError extends RuntimeException extends Exception)
+
+                                              ;;; extends LambdaJError
+                  simple-error                SimpleError extends LambdaJError
+
+                  cell-error                  CellError extends LambdaJError
+                      unbound-variable        UnboundVariable extends CellError extends LambdaJError
+                      undefined-function      UndefinedFunction extends CellError extends LambdaJError
+
+                  control-error               ControlError extends LambdaJError
+
+                  program-error               ProgramError extends LambdaJError
+
+                  parse-error                 SExpressionReader.ParseError extends LambdaJError
+
+
+                                              ;;; extends java.lang.RuntimeException
+                  arithmetic-error            java.lang.ArithmeticException extends RuntimeException
+                      (overflow, underflow)
+      
+                  type-error                  java.lang.ClassCastException extends RuntimeException
+                      simple-type-error       SimpleTypeError extends ClassCastException
+                      invalid-index-error     InvalidIndexError extends IndexOutOfBoundsException
+      
+                  file-error                  java.nio.file.InvalidPathException extends IllegalArgumentException extends RuntimeException
+
+
+                                              ;;; extends java.io.IOException
+                  stream-error                java.io.IOException
+                      end-of-file             java.io.EOFException extends IOException
+                      reader-error            ReaderError extends IOException
+                                              NOTE: CL's reader-error has two superclasses: stream-error and parse-error
+                                                    if c was a reader-error then both
+                                                    (typep c 'stream-error) and (typep c 'parse-error) are true
+
+The above is a subset of CLtL2's predefined data types,
+see "CLtL2 2. Data Types" https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node15.html,
+the condition hierarchy is a subset of CLtL2 predefined condition types,
+see "CLtL2 29.5. Predefined Condition Types" https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node346.html
+and "CLHS 9.1.1 Condition Types" http://clhs.lisp.se/Body/09_aa.htm
 
 Murmel treats symbols case-insensitive.
 Symbol names are of arbitrary length, however only the
@@ -382,7 +457,7 @@ may not be used as a function nor as a variable:
 
     nil, t,
     lambda, quote, cond, labels, if, define, defun, let, let*, letrec,
-    setq, progn, catch, thwrow, unwind-protect,
+    setq, progn, catch, thwrow, unwind-protect, try,
     multiple-value-bind, multiple-value-call,
     defmacro, declaim, load, require, provide
 
@@ -566,6 +641,7 @@ Since: 1.3
 
 `catch` is used as the destination of a non-local control transfer by `throw`.
 
+
 ### (throw tagform resultform) -> |
 
 Since: 1.3
@@ -574,6 +650,7 @@ Since: 1.3
 TODO: If there is no outstanding catch tag that matches the throw tag,
 no unwinding of the stack is performed, and an error of type control-error is signaled.
 
+
 ### (unwind-protect protected-form cleanupforms\*) -> result
 
 Since: 1.3
@@ -581,6 +658,26 @@ Since: 1.3
 `unwind-protect` evaluates `protected-form` and guarantees that `cleanup-forms`
 are executed before unwind-protect exits, whether it terminates normally or is aborted
 by a control transfer of some kind.
+
+
+### (try protected-form . error-obj) -> result
+
+Since 1.4
+
+`try` evaluates `protected-form`. If no error occurred during evaluation then
+the values from `protected-form` are the final result.
+If an error occurs then `try` returns the `error-obj` if given or null as the primary result,
+the secondary result is the condition.
+
+Example:
+
+    (multiple-value-bind (result condition)
+      (try (1+ most-positive-fixnum) 'error)
+      (if (eq result 'error)
+            (progn (write "an error occurred" nil)
+                   (write condition) 'bummer)
+        result))
+    ; ==> bummer
 
 
 ### (multiple-value-call function-form values-forms\*) -> result
@@ -606,8 +703,21 @@ If there are more values than symbols, the excess values are discarded.
 The symbols are bound to the values over the execution of the `bodyforms`,
 which make up an implicit progn.
 
-    (multiple-value-bind (a b) (values 'Hello\, '\ World!) (format nil "%s%s" a b))
-     ; ==> "Hello, World!"
+    (multiple-value-bind (a b) (values 'Hello\, '\ World!)
+      (format nil "%s%s" a b))
+    ==> "Hello, World!"
+
+    (multiple-value-bind (a b . c) (values 1 2 3 4 5)
+      (writeln a) (writeln b) (writeln c))
+    ; 1
+    ; 2
+    ; (3 4 5)
+    ; ==> (3 4 5)
+
+    (multiple-value-bind a (values 1 2 3 4 5)
+      (write a))
+    ; (1 2 3 4 5)
+    ; ==> (1 2 3 4 5)
 
 
 ### (load filespec) -> result
@@ -692,12 +802,15 @@ except: comma-dot is not supported.
     `((,a b) ,c ,@d)      ; ==> ((a-val b) c-val d-val1 d-val2)
 
     (define y 'b) (define l '(a b))
-    (eval ``(,a ,,@l ,,y) '((a . a) (b . b) (y . y))) ; ==> (a-val a-val b-val b-val)
+    (eval ``(,a ,,@l ,,y) '((a . a) (b . b) (y . y)))
+    ; ==> (a-val a-val b-val b-val)
 
     (define x '(1 2 3))
-    `(normal= ,x splicing= ,@x see?) ; ==> (normal= (1 2 3) splicing= 1 2 3 see?)
+    `(normal= ,x splicing= ,@x see?)
+    ; ==> (normal= (1 2 3) splicing= 1 2 3 see?)
 
-    `(normal= ,x fakesplicing= . ,x) ; ==> (normal= (1 2 3) fakesplicing= 1 2 3)
+    `(normal= ,x fakesplicing= . ,x)
+    ; ==> (normal= (1 2 3) fakesplicing= 1 2 3)
 
 
 ## Basic Primitives 
@@ -742,6 +855,18 @@ Examples:
     (eql #\a (car "aaa")) ; ==> t
     (eql -0.0 0.0) ; ==> nil
 
+### (equal a b) -> boolean
+
+Since: 1.4
+
+Return `t` if any of the following is true:
+
+- `a` and `b` are `eql`
+- `a` and `b` are strings that have the same text value
+- `a` and `b` are bitvectors whose elements are eql
+- `a` and `b` are conses whose car and cdr are `equal` respectively
+
+
 ### consp, atom, symbolp, null, listp
 
 ### numberp, integerp, floatp
@@ -751,6 +876,10 @@ Examples:
 - `floatp` returns `t` for Murmel and Java decimal number types.
 
 ### characterp
+
+### hash-table-p
+
+Since: 1.4
 
 ### functionp
 
@@ -765,6 +894,12 @@ Return `t` for Murmel strings and all Java Objects implementing java.lang.CharSe
 
 ### simple-string-p, bit-vector-p, simple-bit-vector-p,
 Since: 1.3
+
+### (typep obj typespec) -> boolean
+
+Since: 1.4
+
+`typep` returns `t` if `obj` is of type `typespec` or of a subtype.
 
 ### (adjustable-array-p obj) -> boolean
 
@@ -947,14 +1082,65 @@ Murmel's `seqref` and `seqset` will handle dotted lists, though.
       ; ==> (0 1 . 22)
 
 
+## Hash-tables
+
+### hash-table-p, hash, make-hash-table, hashref, hashset,<br/>hash-table-count, clrhash, hash-table-remove
+
+    (hash-table-p hash-table) -> boolean
+    (hash [test [key1 value1 key2 value2...]]) -> hash-table
+    (make-hash-table [test [size]]) -> hash-table
+    (hashref hash-table key [default]) -> value, was-present-p
+    (hashset hash-table key value) -> value
+    (hashset generator value) -> value
+    (hash-table-count hash-table) -> number-of-entries
+    (clrhash hash-table) -> hash-table
+    (hash-table-remove hash-table key) -> was-present-p 
+    (hash-table-remove generator) -> was-present-p 
+
+Since: 1.4
+
+`hash-table-p, make-hash-table, hash-table-count, clrhash`
+are similar to CL's functions with the same name.
+
+`test` defaults to `eql` and is currently limited to
+`nil, t, eq, eql, compare-eql, equal, compare-equal`.
+When `t` is specified as `key` then object comparisons are done using
+Java's `Object.equals()` method.
+
+Implementation note: hashtables with `compare-eql` or `compare-equal`
+are actually implemented as trees, so operations will be O(log n).
+hashtables with `eq, eql, equal` or `t` are real hashtables, so operations will be O(n).
+
+### sxhash
+
+    (sxhash obj) -> hash-code
+
+Since: 1.4
+
+For two objects that are `equal` `sxhash` will return the same hash-code.
+
+### scan-hash-table
+
+    (scan-hash-table hash) -> key-value-generator
+
+Since: 1.4
+
+`scan-hash-table` returns a function of no arguments that will
+on subsequent invocations return `(key . value), valid?`.
+
+Murmel's (and [mlib's](mlib.html)) generators are somewhat similar to what
+SRFI 158 https://srfi.schemers.org/srfi-158/srfi-158.html
+provides.
+
+
 ## I/O
 
 ### read, write, writeln, lnwrite
 
-    (read) -> obj
-    (write   obj  print-escape-p?) -> t
-    (writeln obj? print-escape-p?) -> t
-    (lnwrite obj? print-escape-p?) -> t
+    (read eof-obj?) -> obj
+    (write   obj  print-escape-p?) -> obj
+    (writeln obj? print-escape-p?) -> obj
+    (lnwrite obj? print-escape-p?) -> obj
 
 `read` w/o an argument will throw an error when encountering EOF.
 If an optional argument was given then EOF does not throw an error
@@ -986,10 +1172,71 @@ the optioal parameter `print-escape-p` can be used to turn off escaping:
 
     (writeln "Hello, World!" nil)
 
+
+### (write-to-string obj print-escape-p?) -> result-string
+
+Since: 1.4
+
+Convert `obj` to it's string representation.
+
+
+### (read-from-string str [eof-obj [start [end]]]) -> object, position
+
+Since: 1.4
+
+Similar to CL's `read-from-string` which has more parameters.
+If `eof-obj` is not given or `nil` then end-of-file during reading
+will be signalled as an `end-of-file` condition.
+
+    (read-from-string "123 456" nil 4)     ; ==> 456, 7
+    (read-from-string "123 456" 'eof 7)    ; ==> eof, 7
+    (read-from-string "123 456   " 'eof 7) ; ==> eof, 10
+    (read-from-string "123 456" nil 1 4)   ; ==> 23, 4
+    (read-from-string "          " 'eof 5) ; ==> eof, 10
+
+
+### (read-textfile-lines filenamestr [charset]) -> result-string-vector
+
+Since: 1.4
+
+Read the file with the given filename and return it's contents
+as a `simple-vector` containing one `simple-string` for each line.
+
+
+### (read-textfile filenamestr [charset]) -> result-string
+
+Since: 1.4
+
+Read the file with the given filename and return it's contents
+as a `string`. Lineend character sequences will be normalized to `#\Newline`.
+If a non-empty file ends with a line without a lineend character sequence
+then one will be supplied. `result-string` will either be empty
+or end with `#\Newline`.
+
+
+### (write-textfile-lines filenamestr string-sequence  [appendp [charset]]) -> nil
+
+Since: 1.4
+
+Write all elements (which must be of type `string`)
+of `string-sequence` to the file `filenamestr`.
+Each element (line) will be terminated with the OS-default line-end character(-sequence).
+(Note: with the JVM this can be set using -Dline.separator.)
+
+
+### (write-textfile filenamestr string  [appendp [charset]]) -> nil
+
+Since: 1.4
+
+Write `string` to the file `filenamestr`.
+Each #\Newline character will be written as the OS-default line-end character(-sequence).
+
+
 ### format, format-locale
 
 `format t` writes a formatted string to stdout and returns `nil`.
-format's parameters work as java.lang.String.format().
+`format`'s parameters work as with `java.lang.String.format()`
+which is similar to C's `printf()`.
 
     (format t "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
 
@@ -1033,6 +1280,12 @@ will be `t`, e.g.:
     (defmacro add2 (a) `(+ ,a 2))  ; ==> add2
     (macroexpand-1 '(add2 3))      ; --> (+ 3 2)
                                    ; --> t
+
+### (error datum . arguments) -> |
+
+Since 1.4
+
+Similar to CL's `error`.
 
 
 ## Time
@@ -1402,7 +1655,7 @@ Compiler issues:
 
 ## Copyright 
 
-Murmel and JMurmel are Copyright (C) 2020-2022 Robert Mayer.
+Murmel and JMurmel are Copyright (C) 2020-2023 Robert Mayer.
 
 This work is licensed under the terms of the MIT license.
 For a copy, see https://opensource.org/licenses/MIT.
