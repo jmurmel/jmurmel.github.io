@@ -674,8 +674,9 @@ Example:
     (multiple-value-bind (result condition)
       (try (1+ most-positive-fixnum) 'error)
       (if (eq result 'error)
-            (progn (write "an error occurred" nil)
-                   (write condition) 'bummer)
+            (progn (write "an error occurred: " nil)
+                   (write condition)
+                   'bummer)
         result))
     ; ==> bummer
 
@@ -1023,6 +1024,19 @@ Example usage:
 
 Since: 1.3
 
+
+### string
+    (string X) -> string
+
+Since: 1.4.1
+
+`string` coerces X into a mutable string.
+If X is a mutable string, X is returned.
+If X is an immutable string, a fresh mutable simple string is returned.
+If X is a symbol, its name is returned.
+If X is a character then a one element string containing that character is returned.
+If X cannot be coerced into a string, an error occurs.
+
 ### slength, sref, sset
     (slength str) -> length
     (sref    str n) -> nth-character
@@ -1286,6 +1300,23 @@ will be `t`, e.g.:
 Since 1.4
 
 Similar to CL's `error`.
+`datum` can also be a condition,
+e.g. to re-raise a condition that is not handled.
+
+    (try (error 'simple-error "an error occurred") 'err)
+-> err
+-> simple-error - an error occurred
+
+    (writeln (try (multiple-value-bind (result condition) (try (error 'simple-error "an error occurred") 'err)
+                    (if (eq result 'err)
+                          (if (typep condition 'arithmetic-error)
+                                (writeln "an arithmetic error occurred")
+                            (progn (writeln "another error occurred, rethrowing")
+                                   (error condition)))
+                      (writeln "no error")))
+                  'outer-err))
+outer-err
+###> outer-err
 
 
 ## Time
