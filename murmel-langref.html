@@ -327,6 +327,8 @@ Murmel's type system (and the corresponding host types) look like so:
 
           character               ; #\A                            -> java.lang.Character
 
+          random-state            ; (make-random-state)            -> java.util.Random
+
           vector                  ; (make-array NN t t)            -> java.util.ArrayList
                                   ; (make-array NN t CC)           -> java.util.ArrayList
                                   ; makes an ArrayList w/ size NN and initial capacity CC
@@ -506,7 +508,7 @@ The second argument to `define` is optional and defaults to `nil`.
     (define *global-var* 42)               ; ==> *gloval-var*
     (define f1 (lambda (p1 p2) (+ p1 p2))) ; ==> f1
 
-### (defun symbol (params\*) forms\*) -> symbol
+### (defun symbol (params\*) docstring? forms\*) -> symbol
 
 `defun` is a shorthand for defining functions:
 
@@ -514,11 +516,12 @@ The second argument to `define` is optional and defaults to `nil`.
        <=>
     (define symbol (lambda (params*) forms*))
 
+An optional docstring is ignored.
 Arguments to `defun` are not evaluated.
 
     (defun f2 (p1 p2) (+ p1 p2)) ; ==> f2
 
-### (defmacro name (params\*) forms\*) -> symbol<br/>(defmacro name) -> prev-name
+### (defmacro name (params\*) docstring? forms\*) -> symbol<br/>(defmacro name) -> prev-name
 
 `defmacro` defines a macro, similar to CL's `defmacro`.
 Macros are somewhat similar to functions:
@@ -535,6 +538,8 @@ are not scoped but once defined they are visible everywhere.
 
 `(defmacro name)` can be used to unbind previously
 defined macros.
+
+An optional docstring is ignored.
 
     (defmacro twice (arg) (list '* arg 2))  ; ==> twice
     (twice 3) ; ==> 6.0
@@ -880,6 +885,10 @@ Return `t` if any of the following is true:
 - `floatp` returns `t` for Murmel and Java decimal number types.
 
 ### characterp
+
+### random-state-p
+
+Since: 1.4.3
 
 ### hash-table-p
 
@@ -1347,12 +1356,6 @@ User cpu time in internal time units
 
     (get-internal-run-time)
 
-### (get-internal-cpu-time) -> number
-
-User + system cpu time in internal time units
-
-    (get-internal-cpu-time)
-
 ### (sleep desired-duration) -> nil
 
 Pause execution for approx. x seconds.
@@ -1450,6 +1453,21 @@ The numeric comparison operators take one or more number arguments.
     (= 1 1.0)         ; ==> t
     (< 1 2 3.0 4 5.0) ; ==> t
     (< 1 2 3 3 4 5)   ; ==> nil
+
+### (random limit random-state?) -> random-number
+
+Since: 1.4.3
+
+Similar to CL's `random`.
+
+### (make-random-state state?) -> new-state
+
+Since: 1.4.3
+
+Similar to CL's `make-random-state` with the following differences:
+- If `state` is a number then it will be truncated to an integer
+  and used as a seed for the newly created random state.
+- Murmel's `random-state` objects will print unreadably.
 
 
 ## Predefined Graphics Primitives 
