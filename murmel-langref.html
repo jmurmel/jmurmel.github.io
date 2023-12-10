@@ -194,13 +194,6 @@ of Lisp pp 62"):
 > T is a keyword recognized by certain functions, such as FORMAT.
 
 
-### dynamic
-`dynamic` is a pre-defined self-evaluating symbol that may be used
-in the `(lambda dynamic...` (interpreter only) and `(let* dynamic...` forms, see below.
-
-    dynamic ; ==> dynamic
-
-
 ### internal-time-units-per-second
 `internal-time-units-per-second` contains the resolution
 of the time related functions, see below.
@@ -246,6 +239,14 @@ During invocation of the condition handler it will be disabled:
 if the current handler dynamically replaced a previous handler
 then the previous handler will be temporarily restored.
 
+
+### \*random-state\*
+
+Since: 1.4.4
+
+Will initially be `nil`. Will be lazily created by one-arg `random`
+or zero-arg `make-random-state`.
+     
 
 ### REPL variables
     @-, @+, @++, @+++, @\*, @\*\*, @\*\*\*, @/, @//, @///
@@ -302,10 +303,10 @@ will be bound to the last parameter.
 Murmel supports symbols and cons cells (and lists built from cons cells)
 as well as other atoms that are not symbols.
 These other atoms are double precision floating point numbers,
-integer numbers, vectors, strings, characters and bits. Custom primitives
-may support additional atoms.
+integer numbers, vectors, strings, characters, bits and more.
+Custom primitives may support additional atoms.
 
-Murmel's type system (and the corresponding host types) look like so:
+Murmel's type system (and JMurmel's corresponding host types) look like so:
 
     ;; Murmel type                ; description or "Murmel form -> Java class used in JMurmel"
 
@@ -738,7 +739,7 @@ is the value returned by the last form or nil
 in case of an empty file.
 
 When compiling Murmel `load` is performed at
-compile time.
+compile time and must appear as a toplevel form.
 
 `filespec` is not eval'd and must be a string.
 Unless filespec ends with ".lisp" the file extension
@@ -765,7 +766,7 @@ loading files that were already loaded by comparing
 `module-name` to the set of already loaded modules.
 
 When compiling Murmel `require` is performed at
-compile time.
+compile time and must appear as a toplevel form.
 
 If `optional-file-path` is omitted or nil then
 `module-name` will be used as the file path.
@@ -1181,7 +1182,7 @@ but
     C:\> echo (read 'xyxxy)| java -jar lambda\target\jmurmel.jar
     ==> xyxxy
 
-Note that in an EOF occurs while reading an S-expression an error
+Note that if an EOF occurs while reading an S-expression an error
 will be thrown even when `eof-obj` was used. 
 
 `write` accepts an optional boolean argument `print-escape-p`.
@@ -1244,9 +1245,8 @@ Since: 1.4
 
 Read the file with the given filename and return it's contents
 as a `string`. Lineend character sequences will be normalized to `#\Newline`.
-If a non-empty file ends with a line without a lineend character sequence
-then one will be supplied. `result-string` will either be empty
-or end with `#\Newline`.
+
+`charset` defaults to UTF-8.
 
 
 ### (write-textfile-lines filenamestr string-sequence  [appendp [charset]]) -> nil
@@ -1257,6 +1257,8 @@ Write all elements (which must be of type `string`)
 of `string-sequence` to the file `filenamestr`.
 Each element (line) will be terminated with the OS-default line-end character(-sequence).
 (Note: with the JVM this can be set using -Dline.separator.)
+
+`charset` defaults to UTF-8.
 
 
 ### (write-textfile filenamestr string  [appendp [charset]]) -> nil
