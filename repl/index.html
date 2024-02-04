@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Murmel Online REPL</title>
+    <script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/js/jquery.terminal.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/css/jquery.terminal.min.css" rel="stylesheet"/>
+    <style>
+        body{
+            margin:1em auto;
+            max-width:40em;
+            padding:0 .62em;
+            font:1.2em/1.62 sans-serif;
+        }
+        h1,h2,h3 {
+            line-height:1.2;
+        }
+
+        #term_demo {
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+<script>
+const murmelPromise = (async function () {
+  await cheerpjInit();
+  const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
+  const LambdaJ = await murmelJar.io.github.jmurmel.LambdaJ;
+  return await new LambdaJ();
+})();
+
+
+var murmel;
+
+jQuery(function($, undefined) {
+    $('#term_demo').terminal(async function(command) {
+        if (murmel == undefined) {
+            murmel = await murmelPromise;
+        }
+        if (command !== '') {
+            var result = await murmel.evalString(String(command));
+            if (result != undefined) {
+                this.echo(String(result));
+            }
+        }
+    }, {
+        greetings: 'Murmel Interpreter\nEnter a Murmel form (turtle graphics or :commands don\'t work yet)\n',
+        name: 'murmel_demo',
+        height: 600,
+        width: 800,
+        prompt: 'JMurmel> '
+    });
+});
+
+</script>
+<h1>Murmel Online REPL</h1>
+<div id="term_demo"></div>
+<div>&nbsp;</div>
+<div id="credits">
+    This JMurmel Online REPL uses <a href="https://labs.leaningtech.com/cheerpj3">CheerpJ 3.0</a>
+    and <a href="https://terminal.jcubic.pl/">jQuery Terminal</a>.
+    See <a href="https://labs.leaningtech.com/cheerpj3/licensing">CheerpJ licensing</a>
+    and <a href="https://github.com/jcubic/jquery.terminal">jQuery Github</a>
+    for more info.
+</div>
+</body>
+</html>
