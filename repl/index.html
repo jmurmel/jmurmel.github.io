@@ -14,57 +14,77 @@
             padding:0 .62em;
             font:1.2em/1.62 sans-serif;
         }
+
         h1,h2,h3 {
             line-height:1.2;
+        }
+
+        code {
+            font:1.2em/1.62 monospace;
+            color: lightgreen;
+            background: black;
         }
 
         #term_demo {
             border-radius: 5px;
         }
     </style>
+    <script>
+    const murmelPromise = (async function () {
+      await cheerpjInit();
+      const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
+      const LambdaJ = await murmelJar.io.github.jmurmel.LambdaJ;
+      return await new LambdaJ();
+    })();
+
+
+    var murmel;
+    
+    jQuery(function($, undefined) {
+        $('#term_demo').terminal(async function(command) {
+            if (murmel == undefined) {
+                murmel = await murmelPromise;
+            }
+            if (command !== '') {
+                var result = await murmel.evalString(String(command));
+                if (result != undefined) {
+                    this.echo(String(result));
+                }
+            }
+        }, {
+            greetings: 'Murmel Interpreter\nEnter a Murmel form (turtle graphics or :commands don\'t work yet)\n',
+            name: 'murmel_demo',
+            height: 500,
+            width: 800,
+            prompt: 'JMurmel> '
+        });
+    });
+    </script>
 </head>
 <body>
-<script>
-const murmelPromise = (async function () {
-  await cheerpjInit();
-  const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
-  const LambdaJ = await murmelJar.io.github.jmurmel.LambdaJ;
-  return await new LambdaJ();
-})();
 
-
-var murmel;
-
-jQuery(function($, undefined) {
-    $('#term_demo').terminal(async function(command) {
-        if (murmel == undefined) {
-            murmel = await murmelPromise;
-        }
-        if (command !== '') {
-            var result = await murmel.evalString(String(command));
-            if (result != undefined) {
-                this.echo(String(result));
-            }
-        }
-    }, {
-        greetings: 'Murmel Interpreter\nEnter a Murmel form (turtle graphics or :commands don\'t work yet)\n',
-        name: 'murmel_demo',
-        height: 600,
-        width: 800,
-        prompt: 'JMurmel> '
-    });
-});
-
-</script>
 <h1>Murmel Online REPL</h1>
+
+<div>
+    Murmel is a Lisp interpreter/ compiler,
+    see the <a href="https://jmurmel.github.io/murmel-langref.html" target="_blank">Murmel Language Reference</a>
+    and the <a href="https://jmurmel.github.io/mlib.html" target="_blank">Murmel Default Library Reference</a>
+    (type <code>(load "mlib.lisp")</code> at the REPL to use it).
+</div>
+<div>&nbsp;</div>
+
 <div id="term_demo"></div>
 <div>&nbsp;</div>
+
 <div id="credits">
-    This JMurmel Online REPL uses <a href="https://labs.leaningtech.com/cheerpj3">CheerpJ 3.0</a>
-    and <a href="https://terminal.jcubic.pl/">jQuery Terminal</a>.
-    See <a href="https://labs.leaningtech.com/cheerpj3/licensing">CheerpJ licensing</a>
-    and <a href="https://github.com/jcubic/jquery.terminal">jQuery Github</a>
-    for more info.
+    This <a href="https://jmurmel.github.io" target="_blank">Murmel</a> Online REPL uses
+    <a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ 3.0</a> (*)
+    and <a href="https://terminal.jcubic.pl/" target="_blank">jQuery Terminal 2.38.0</a>.
+    <br/><br/>
+    (*) <a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ</a>
+    is free to use for personal projects, most non-commercial applications, and for technical evaluations,
+    see <a href="https://labs.leaningtech.com/cheerpj3/licensing" target="_blank">CheerpJ licensing</a>.
+
 </div>
 </body>
 </html>
