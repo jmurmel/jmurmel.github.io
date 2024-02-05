@@ -6,16 +6,24 @@
     <meta name="description" content="Online REPL for Murmel, a Lisp dialect.">
     <meta name="keywords" content="repl, murmel, murmel-lang, lisp, interpreter, lisp-interpreter, lisp-dialect">
     <title>Murmel Online REPL</title>
+
     <script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/js/jquery.terminal.min.js"></script>
     <link  href="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/css/jquery.terminal.min.css" rel="stylesheet"/>
+
+    <script src="https://cdn.jsdelivr.net/npm/prismjs/prism.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal/js/prism.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-lisp.min.js"></script>
+
+    <link  href="https://cdn.jsdelivr.net/npm/terminal-prism/css/prism.css" rel="stylesheet"/>
+
     <style>
         body{
             margin:1em auto;
             max-width:40em;
             padding:0 .62em;
-            font: 1.2em/1.62 sans-serif;
+            font: 1em/1.62 sans-serif;
         }
 
         h1,h2,h3 {
@@ -23,7 +31,7 @@
         }
 
         code {
-            font:1.2em/1.62 monospace;
+            font:1em/1.62 monospace;
             color: lightgreen;
             background: black;
         }
@@ -31,15 +39,19 @@
         #credits {
             background: lightgray;
             padding: 0.5em;
-            font: 1em/1.62 sans-serif;
             font-size: 80%;
         }
 
         #term_demo {
-            border-radius: 5px;
+            border-radius: 10px;
         }
     </style>
     <script>
+
+    $(function() {
+        $.terminal.syntax('lisp');
+    });
+    
     const murmelPromise = (async function () {
       await cheerpjInit();
       const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
@@ -62,7 +74,7 @@
                 }
             }
         }, {
-            greetings: 'Murmel Interpreter\nEnter a Murmel form (REPL variables, turtle graphics or :commands don\'t work yet)\n',
+            greetings: 'Murmel Interpreter\nEnter a Murmel form (REPL variables, turtle graphics or :commands don\´t work yet)\n',
             name: 'murmel_demo',
             height: 500,
             width: 600,
@@ -94,6 +106,24 @@
     see <a href="https://labs.leaningtech.com/cheerpj3/licensing" target="_blank">CheerpJ licensing</a>.
 </div>
 <div>&nbsp;</div>
+
+<div>
+The REPL has an editable, searchable history and supports some keyboard shortcuts:
+<ul>
+<li>Shift-Enter allows entering multi-line commands
+<li>CTRL+A/CTRL+E move to the start or end of a form (or use Pos-1 or End)
+<li>CTRL+L clears the screen
+<li>CTRL+R starts reverse history search, CTRL+G exits, Enter runs the search result,
+    any arrow key transfers the search result to the REPL prompt
+<li>Within reverse search
+    <ul>
+    <li>if the history element is a single line Up/Down moves in the history
+    <li>if you're in the middle of a multiline history element Up/Down move within the history element
+    <li>if you're in the first (last) line of a history element Up (Down) moves to the previous (next) history element
+    <li>CTRL+Up/CTRL+Down will move to the previous/next history element even if in the middle of a multiline history element
+    </ul>
+</ul>
+</div>
 
 <div id="term_demo"></div>
 
