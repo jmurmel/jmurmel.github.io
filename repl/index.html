@@ -30,8 +30,12 @@
             line-height:1.2;
         }
 
-        div {
+        div.text {
             margin-bottom: 1em;
+        }
+
+        #term_demo {
+            margin-bottom: 0;
         }
 
         code {
@@ -91,14 +95,14 @@
 
 <h1>Murmel Online REPL</h1>
 
-<div>
+<div class="text">
     <a href="https://jmurmel.github.io" target="_blank">Murmel</a> is a Lisp interpreter/ compiler,
     see the <a href="murmel-langref.html" target="_blank">Murmel Language Reference</a>
     and the <a href="mlib.html" target="_blank">Murmel Default Library Reference</a>
     (type <code>(require "mlib")</code> at the REPL to use it).
 </div>
 
-<div id="credits">
+<div id="credits" class="text">
     This <a href="https://jmurmel.github.io" target="_blank">Murmel 1.4.6-SNAPSHOT</a> Online REPL uses
     <a href="https://github.com/jquery/jquery" target="_blank">jQuery 3.7.1</a>,
     <a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ 3.0</a> (*)
@@ -109,7 +113,7 @@
     see <a href="https://labs.leaningtech.com/cheerpj3/licensing" target="_blank">CheerpJ licensing</a>.
 </div>
 
-<div>
+<div class="text">
 This REPL has an editable, searchable history and supports some keyboard shortcuts:
 <ul>
 <li><code>Shift-Enter</code> allows entering multi-line commands
