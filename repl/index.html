@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8" />
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Online REPL for Murmel, a Lisp dialect.">
     <meta name="keywords" content="repl, murmel, murmel-lang, lisp, interpreter, lisp-interpreter, lisp-dialect">
@@ -10,16 +10,16 @@
     <script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/js/jquery.terminal.min.js"></script>
-    <link  href="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/css/jquery.terminal.min.css" rel="stylesheet"/>
+    <link  href="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/css/jquery.terminal.min.css" rel="stylesheet">
 
     <script src="https://cdn.jsdelivr.net/npm/prismjs/prism.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery.terminal/js/prism.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-lisp.min.js"></script>
 
-    <link  href="https://cdn.jsdelivr.net/npm/terminal-prism/css/prism.css" rel="stylesheet"/>
+    <link  href="https://cdn.jsdelivr.net/npm/terminal-prism/css/prism.css" rel="stylesheet">
 
     <style>
-        body{
+        body {
             margin:1em auto;
             max-width:40em;
             padding:0 .62em;
@@ -28,6 +28,10 @@
 
         h1,h2,h3 {
             line-height:1.2;
+        }
+
+        div {
+            margin-bottom: 1em;
         }
 
         code {
@@ -51,7 +55,7 @@
     $(function() {
         $.terminal.syntax('lisp');
     });
-    
+
     const murmelPromise = (async function () {
       await cheerpjInit();
       const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
@@ -61,7 +65,7 @@
 
 
     var murmel;
-    
+
     jQuery(function($, undefined) {
         $('#term_demo').terminal(async function(command) {
             if (murmel == undefined) {
@@ -74,10 +78,10 @@
                 }
             }
         }, {
-            greetings: 'Murmel Interpreter\nEnter a Murmel form (REPL variables, turtle graphics or :commands don\´t work yet)\n',
             name: 'murmel_demo',
+            width: $("#term_demo").clientWidth,
             height: 500,
-            width: 600,
+            greetings: 'Murmel Interpreter\nEnter a Murmel form (REPL variables, turtle graphics or :commands don´t work yet)\n',
             prompt: 'JMurmel> '
         });
     });
@@ -93,34 +97,32 @@
     and the <a href="mlib.html" target="_blank">Murmel Default Library Reference</a>
     (type <code>(require "mlib")</code> at the REPL to use it).
 </div>
-<div>&nbsp;</div>
 
 <div id="credits">
     This <a href="https://jmurmel.github.io" target="_blank">Murmel 1.4.6-SNAPSHOT</a> Online REPL uses
     <a href="https://github.com/jquery/jquery" target="_blank">jQuery 3.7.1</a>,
     <a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ 3.0</a> (*)
     and <a href="https://terminal.jcubic.pl/" target="_blank">jQuery Terminal 2.38.0</a>.
-    <br/>
+    <br>
     (*) <a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ</a>
     is free to use for personal projects, most non-commercial applications, and for technical evaluations,
     see <a href="https://labs.leaningtech.com/cheerpj3/licensing" target="_blank">CheerpJ licensing</a>.
 </div>
-<div>&nbsp;</div>
 
 <div>
-The REPL has an editable, searchable history and supports some keyboard shortcuts:
+This REPL has an editable, searchable history and supports some keyboard shortcuts:
 <ul>
-<li>Shift-Enter allows entering multi-line commands
-<li>CTRL+A/CTRL+E move to the start or end of a form (or use Pos-1 or End)
-<li>CTRL+L clears the screen
-<li>CTRL+R starts reverse history search, CTRL+G exits, Enter runs the search result,
+<li><code>Shift-Enter</code> allows entering multi-line commands
+<li><code>CTRL+A/CTRL+E</code> move to the start or end of a form (or use <code>Pos-1</code> or <code>End</code>)
+<li><code>CTRL+L</code> clears the screen
+<li><code>CTRL+R</code> starts reverse history search, <code>CTRL+G</code> exits, <code>Enter</code> runs the search result,
     any arrow key transfers the search result to the REPL prompt
 <li>Within reverse search
     <ul>
-    <li>if the history element is a single line Up/Down moves in the history
-    <li>if you're in the middle of a multiline history element Up/Down move within the history element
-    <li>if you're in the first (last) line of a history element Up (Down) moves to the previous (next) history element
-    <li>CTRL+Up/CTRL+Down will move to the previous/next history element even if in the middle of a multiline history element
+    <li>if the history element is a single line <code>Up/Down</code> moves in the history
+    <li>if you're in the middle of a multiline history element <code>Up/Down</code> move within the history element
+    <li>if you're in the first (last) line of a history element <code>Up (Down)</code> moves to the previous (next) history element
+    <li><code>CTRL+Up/CTRL+Down</code> will move to the previous/next history element even if in the middle of a multiline history element
     </ul>
 </ul>
 </div>
