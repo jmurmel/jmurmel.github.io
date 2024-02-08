@@ -63,8 +63,8 @@
     const murmelPromise = (async function () {
       await cheerpjInit();
       const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
-      const LambdaJ = await murmelJar.io.github.jmurmel.LambdaJ;
-      return await new LambdaJ();
+      const StringRepl = await murmelJar.io.github.jmurmel.LambdaJ$StringRepl;
+      return await StringRepl.makeStringRepl();
     })();
 
 
@@ -85,7 +85,7 @@
             name: 'murmel_demo',
             width: $("#term_demo").clientWidth,
             height: 500,
-            greetings: 'Murmel Interpreter\nEnter a Murmel form (REPL variables, turtle graphics or :commands don´t work yet)\n',
+            greetings: 'Murmel Interpreter\nEnter a Murmel form or :command (or enter :h for command help)\n(compiling stuff or turtle graphics don´t work yet)\n',
             prompt: 'JMurmel> '
         });
     });
