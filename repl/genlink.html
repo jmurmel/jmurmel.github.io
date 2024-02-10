@@ -9,7 +9,7 @@
 	h1,h2,h3 {line-height:1.2;}
 	div.text {margin-bottom: 1em;}
 	tt {font:1em/1.62 monospace; color: lightgreen; background: black;}
-	textarea#input, #output {margin-bottom: 0; border-radius: 10px;}
+	textarea#input, #output {margin: 0; width: 100%; height: 100%; border-radius: 10px;}
 </style>
 <script>
 
@@ -30,7 +30,7 @@ function translate() {
 
 <div class="text">
 Enter some Lisp code:<br>
-<textarea id="input"  cols="50" rows="15"></textarea><br>
+<textarea id="input" rows="20"></textarea><br>
 Click the button to generate a Murmel Online REPL URL and copy it to your clipboard:<br>
 <button id="go">Copy to clipboard!</button><br>
 </div>
