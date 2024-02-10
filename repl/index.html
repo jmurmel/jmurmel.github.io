@@ -7,16 +7,19 @@
     <meta name="keywords" content="repl, murmel, murmel-lang, lisp, interpreter, lisp-interpreter, lisp-dialect">
     <title>Murmel Online REPL</title>
 
+    <!-- CheerpJ -->
     <script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/js/jquery.terminal.min.js"></script>
-    <link  href="https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.38.0/css/jquery.terminal.min.css" rel="stylesheet">
 
-    <script src="https://cdn.jsdelivr.net/npm/prismjs/prism.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal/js/prism.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/prismjs/components/prism-lisp.min.js"></script>
+    <!-- jQuery and jQuery Terminal -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal@2.38.0/js/jquery.terminal.min.js"></script>
+    <link  href="https://cdn.jsdelivr.net/npm/jquery.terminal@2.38.0/css/jquery.terminal.min.css" rel="stylesheet">
 
-    <link  href="https://cdn.jsdelivr.net/npm/terminal-prism/css/prism.css" rel="stylesheet">
+    <!-- Prism (syntax highlighting library) and Prism monkey patches for jQuery Terminal -->
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-lisp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.terminal@2.38.0/js/prism.min.js"></script>
+    <link  href="https://cdn.jsdelivr.net/npm/terminal-prism@0.3.1/css/prism.min.css" rel="stylesheet">
 
     <style>
         body {
