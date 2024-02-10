@@ -1,88 +1,53 @@
 <!doctype html>
 <html lang="en">
 <head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<meta name="description" content="Online REPL for Murmel, a Lisp dialect.">
-	<meta name="keywords" content="repl, murmel, murmel-lang, lisp, interpreter, lisp-interpreter, lisp-dialect">
-	<title>Murmel Online REPL</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Online REPL for Murmel, a Lisp dialect.">
+<meta name="keywords" content="repl, murmel, murmel-lang, lisp, lisp-interpreter, lisp-dialect">
+<title>Murmel Online REPL</title>
 
-	<!-- CheerpJ -->
-	<script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
+<script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
 
-	<!-- jQuery and jQuery Terminal -->
-	<script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.1/dist/jquery.min.js,npm/jquery.terminal@2.38.0/js/jquery.terminal.min.js"></script>
-	<link  href="https://cdn.jsdelivr.net/npm/jquery.terminal@2.38.0/css/jquery.terminal.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.1/dist/jquery.min.js,npm/jquery.terminal@2.38.0/js/jquery.terminal.min.js"></script>
+<link  href="https://cdn.jsdelivr.net/npm/jquery.terminal@2.38.0/css/jquery.terminal.min.css" rel="stylesheet">
 
-	<!-- Prism (syntax highlighting library) and Prism monkey patches for jQuery Terminal -->
-	<script src="https://cdn.jsdelivr.net/combine/npm/prismjs@1.29.0/prism.min.js,npm/prismjs@1.29.0/components/prism-lisp.min.js,npm/jquery.terminal@2.38.0/js/prism.min.js"></script>
-	<link  href="https://cdn.jsdelivr.net/npm/terminal-prism@0.3.1/css/prism.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/combine/npm/prismjs@1.29.0/prism.min.js,npm/prismjs@1.29.0/components/prism-lisp.min.js,npm/jquery.terminal@2.38.0/js/prism.min.js"></script>
+<link  href="https://cdn.jsdelivr.net/npm/terminal-prism@0.3.1/css/prism.min.css" rel="stylesheet">
 
-	<style>
-		body {
-			margin:1em auto;
-			max-width:40em;
-			padding:0 .62em;
-			font: 1em/1.62 sans-serif;
-		}
+<style>
+	body {margin:1em auto; max-width:40em; padding:0 .62em; font: 1em/1.62 sans-serif;}
+	h1,h2,h3 {line-height:1.2;}
+	div.text {margin-bottom: 1em;}
+	tt {font:1em/1.62 monospace; color: lightgreen; background: black;}
+	#term_demo {margin-bottom: 0; border-radius: 10px;}
+	#credits {background: lightgray; padding: 0.5em; font-size: 80%;}
+</style>
+<script>
 
-		h1,h2,h3 {
-			line-height:1.2;
-		}
+$.terminal.syntax('lisp');
 
-		div.text {
-			margin-bottom: 1em;
-		}
+const murmel = (async function () {
+  await cheerpjInit();
+  const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
+  const StringRepl = await murmelJar.io.github.jmurmel.LambdaJ$StringRepl;
+  return await StringRepl.makeStringRepl();
+})();
 
-		#term_demo {
-			margin-bottom: 0;
-		}
-
-		code {
-			font:1em/1.62 monospace;
-			color: lightgreen;
-			background: black;
-		}
-
-		#credits {
-			background: lightgray;
-			padding: 0.5em;
-			font-size: 80%;
-		}
-
-		#term_demo {
-			border-radius: 10px;
-		}
-	</style>
-	<script>
-
-	$.terminal.syntax('lisp');
-
-	const murmel = (async function () {
-	  await cheerpjInit();
-	  const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
-	  const StringRepl = await murmelJar.io.github.jmurmel.LambdaJ$StringRepl;
-	  return await StringRepl.makeStringRepl();
-	})();
-
-
-	jQuery(function($, undefined) {
-		$('#term_demo').terminal(async function(command) {
-			if (command !== '') {
-				var result = await (await murmel).evalString(String(command));
-				if (result != undefined) {
-					this.echo(String(result));
-				}
+jQuery(function($, undefined) {
+	$('#term_demo').terminal(async function(command) {
+		if (command !== '') {
+			var result = await (await murmel).evalString(String(command));
+			if (result != undefined) {
+				this.echo(String(result));
 			}
-		}, {
-			name: 'murmel_demo',
-			width: $("#term_demo").clientWidth,
-			height: 500,
-			greetings: 'Murmel Interpreter\nEnter a Murmel form or :command (or enter :h for command help)\n(compiling stuff or turtle graphics don´t work yet)\n',
-			prompt: 'JMurmel> '
-		});
+		}
+	}, {
+		name: 'murmel_demo', prompt: 'JMurmel> ', width: $("#term_demo").clientWidth, height: 500,
+		greetings: 'Murmel Interpreter\nEnter a Murmel form or :command (or enter :h for command help)\n(compiling stuff or turtle graphics don´t work yet)\n'
 	});
-	</script>
+});
+</script>
 </head>
 <body>
 
@@ -92,34 +57,34 @@
 	<a href="https://jmurmel.github.io" target="_blank">Murmel</a> is a Lisp interpreter/ compiler,
 	see the <a href="murmel-langref.html" target="_blank">Murmel Language Reference</a>
 	and the <a href="mlib.html" target="_blank">Murmel Default Library Reference</a>
-	(type <code>(require "mlib")</code> at the REPL to use it).
+	(type <tt>(require "mlib")</tt> at the REPL to use it).
 </div>
 
 <div id="credits" class="text">
-	This <a href="https://jmurmel.github.io" target="_blank">Murmel 1.4.6-SNAPSHOT</a> Online REPL uses
-	<a href="https://github.com/jquery/jquery" target="_blank">jQuery 3.7.1</a>,
-	<a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ 3.0</a> (*)
-	and <a href="https://terminal.jcubic.pl/" target="_blank">jQuery Terminal 2.38.0</a>.
-	<br>
-	(*) <a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ</a>
-	is free to use for personal projects, most non-commercial applications, and for technical evaluations,
-	see <a href="https://labs.leaningtech.com/cheerpj3/licensing" target="_blank">CheerpJ licensing</a>.
+<a href="https://jmurmel.github.io" target="_blank">Murmel</a> Online REPL uses
+<a href="https://github.com/jquery/jquery" target="_blank">jQuery 3.7.1</a>,
+<a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ 3.0</a> (*)
+and <a href="https://terminal.jcubic.pl/" target="_blank">jQuery Terminal 2.38.0</a>.
+<br>
+(*) <a href="https://labs.leaningtech.com/cheerpj3" target="_blank">CheerpJ</a>
+is free to use for personal projects, most non-commercial applications, and for technical evaluations,
+see <a href="https://labs.leaningtech.com/cheerpj3/licensing" target="_blank">CheerpJ licensing</a>.
 </div>
 
 <div class="text">
-This REPL has an editable, searchable history and supports some keyboard shortcuts:
+This REPL has an editable, searchable history with keyboard shortcuts:
 <ul>
-<li><code>Shift-Enter</code> allows entering multi-line commands
-<li><code>CTRL+A/CTRL+E</code> move to the start or end of a form (or use <code>Pos-1</code> or <code>End</code>)
-<li><code>CTRL+L</code> clears the screen
-<li><code>CTRL+R</code> starts reverse history search, <code>CTRL+G</code> exits, <code>Enter</code> runs the search result,
+<li><tt>Shift-Enter</tt> allows entering multi-line commands
+<li><tt>CTRL+A/CTRL+E</tt> move to the start or end of a form (or use <tt>Pos-1</tt> or <tt>End</tt>)
+<li><tt>CTRL+L</tt> clears the screen
+<li><tt>CTRL+R</tt> starts reverse history search, <tt>CTRL+G</tt> exits, <tt>Enter</tt> runs the search result,
 	any arrow key transfers the search result to the REPL prompt
 <li>Within reverse search
 	<ul>
-	<li>if the history element is a single line <code>Up/Down</code> moves in the history
-	<li>if you're in the middle of a multiline history element <code>Up/Down</code> move within the history element
-	<li>if you're in the first (last) line of a history element <code>Up (Down)</code> moves to the previous (next) history element
-	<li><code>CTRL+Up/CTRL+Down</code> will move to the previous/next history element even if in the middle of a multiline history element
+	<li>if the history element is a single line <tt>Up/Down</tt> moves in the history
+	<li>if you're in the middle of a multiline history element <tt>Up/Down</tt> move within the history element
+	<li>if you're in the first (last) line of a history element <tt>Up (Down)</tt> moves to the previous (next) history element
+	<li><tt>CTRL+Up/CTRL+Down</tt> will move to the previous/next history element even if in the middle of a multiline history element
 	</ul>
 </ul>
 </div>
