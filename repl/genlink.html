@@ -31,10 +31,15 @@ function translate() {
 <h1>Murmel Online REPL link generator</h1>
 
 <div class="text">
+The <a href="https://jmurmel.github.io/repl/">Murmel Online REPL</a> supports an URL parameter <tt>lisp</tt>.
+Use the form below to create an URL from your Lisp code
+that can be shared and will open a REPL with the code already present.
+</div>
+<div class="text">
 Enter some Lisp code:<br>
 <textarea id="input" rows="20"></textarea><br>
 Click the button to generate a Murmel Online REPL URL and copy it to your clipboard:<br>
-<button id="go">Copy to clipboard!</button><br>
+<button id="go">Copy URL to clipboard!</button><br>
 </div>
 <script>
 document.getElementById("go").onclick = translate;
