@@ -18,13 +18,10 @@ function translate() {
 	const encoded = encodeURIComponent(inStr).replaceAll(')', '%29');
 	const link = 'https://jmurmel.github.io/repl/?lisp=' + encoded;
 
-	navigator.clipboard.writeText(link)
-	.then(() => {
-		alert("Copied the link:\n\n" + link);
-		})
-		.catch(() => {
-		  alert("something went wrong");
-		});
+	navigator.clipboard
+        .writeText(link)
+		.then(() => { alert("Copied the link:\n\n" + link); })
+		.catch(() => { alert("something went wrong"); });
 }
 
 </script>
