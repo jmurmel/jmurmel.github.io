@@ -19,7 +19,7 @@ function translate() {
 	const link = 'https://jmurmel.github.io/repl/?lisp=' + encoded;
 
 	navigator.clipboard
-        .writeText(link)
+		.writeText(link)
 		.then(() => { alert("Copied the link:\n\n" + link); })
 		.catch(() => { alert("something went wrong"); });
 }
