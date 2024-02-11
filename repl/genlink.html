@@ -16,7 +16,8 @@
 function translate() {
 	const inStr = document.getElementById('input').value;
 	const urlEncoded = encodeURIComponent(inStr).replaceAll(')', '%29');
-	const b64 = btoa(inStr);
+    const bytes = new TextEncoder().encode(inStr);
+	const b64 = btoa(String.fromCodePoint(...bytes)).replaceAll('+', '%2B').replaceAll('/', '%2F');
 	const encodedLisp = b64.length < urlEncoded.length ? ('lispb64=' + b64) : ('lisp=' + urlEncoded);
 	const hide = document.getElementById('hide').checked ? '&hide' : '';
 	const link = 'https://jmurmel.github.io/repl/?' + encodedLisp + hide;

@@ -48,11 +48,16 @@ jQuery(function($, undefined) {
 	});
 });
 
+function bytesToBase64(bytes) {
+  const binString = String.fromCodePoint(...bytes);
+  return btoa(binString);
+}
+
 jQuery(function($, undefined) {
 	if (window.location.search !== '') {
 		const params = new URLSearchParams(window.location.search);
 		const b64 = params.get('lispb64');
-		const value = b64 !== null ? atob(b64) : params.get('lisp');
+		const value = b64 !== null ? new TextDecoder().decode(Uint8Array.from(atob(b64), (m) => m.codePointAt(0))) : params.get('lisp');
 
 		if (value !== null) {
 			$('#term').terminal().insert(value);
