@@ -18,23 +18,24 @@
 <style>
 	body {margin:1em auto; max-width:40em; padding:0 .62em; font: 1em/1.62 sans-serif;}
 	h1,h2,h3 {line-height:1.2;}
+	div#explanation {margin: 0; }
 	div.text {margin-bottom: 1em;}
 	tt {font:1em/1.62 monospace; color: lightgreen; background: black;}
-	#term_demo {margin-bottom: 0; border-radius: 10px;}
+	#term {margin-bottom: 0; border-radius: 10px;}
 	#credits {background: lightgray; padding: 0.5em; font-size: 80%;}
 </style>
 <script>
 $.terminal.syntax('lisp');
 
 const murmel = (async function () {
-  await cheerpjInit();
-  const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
-  const StringRepl = await murmelJar.io.github.jmurmel.LambdaJ$StringRepl;
-  return await StringRepl.makeStringRepl();
+	await cheerpjInit();
+	const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
+	const StringRepl = await murmelJar.io.github.jmurmel.LambdaJ$StringRepl;
+	return await StringRepl.makeStringRepl();
 })();
 
 jQuery(function($, undefined) {
-	$('#term_demo').terminal(async function(command) {
+	$('#term').terminal(async function(command) {
 		if (command !== '') {
 			var result = await (await murmel).evalString(String(command));
 			if (result != undefined) {
@@ -42,7 +43,7 @@ jQuery(function($, undefined) {
 			}
 		}
 	}, {
-		name: 'murmel_demo', prompt: 'JMurmel> ', width: $("#term_demo").clientWidth, height: 500,
+		name: 'murmel_demo', prompt: 'JMurmel> ', width: $("#term").clientWidth, height: 500,
 		greetings: 'Murmel Interpreter\nEnter a Murmel form or :command (or enter :h for command help)\n(compiling stuff or turtle graphics don´t work yet)\n'
 	});
 });
@@ -55,17 +56,35 @@ jQuery(function($, undefined) {
 		let value = params.lisp;
 
 		if (value !== null) {
-			// see https://terminal.jcubic.pl/api_reference.php#terminal
-			$('#term_demo').terminal().insert(value);
+			$('#term').terminal().insert(value);
 		}
+
+		if (params.hide !== null) hide();
 	}
 });
+
+function hide() {
+	document.getElementById("explanation").style.display = 'none';
+	const lnk = document.getElementById("showhide");
+	lnk.innerText = '(Show explanations)';
+	lnk.onclick = show;
+}
+
+function show() {
+	document.getElementById("explanation").style.display = 'block';
+	const lnk = document.getElementById("showhide");
+	lnk.innerText = '(Hide explanations)';
+	lnk.onclick = hide;
+}
 </script>
 </head>
 <body>
 
+<p style="font-size:smaller; float:right"><a href="#" id="showhide">(Hide explanations)</a></p>
+
 <h1>Murmel Online REPL</h1>
 
+<div id="explanation">
 <div class="text">
 	<a href="https://jmurmel.github.io" target="_blank">Murmel</a> is a Lisp interpreter/ compiler,
 	see the <a href="murmel-langref.html" target="_blank">Murmel Language Reference</a>
@@ -106,8 +125,12 @@ This REPL has an editable, searchable history with keyboard shortcuts:
 	</ul>
 </ul>
 </div>
+</div>
 
-<div id="term_demo"></div>
+<div id="term"></div>
 
+<script>
+document.getElementById("showhide").onclick = hide;
+</script>
 </body>
 </html>

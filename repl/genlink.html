@@ -16,7 +16,8 @@
 function translate() {
 	const inStr = document.getElementById('input').value;
 	const encoded = encodeURIComponent(inStr).replaceAll(')', '%29');
-	const link = 'https://jmurmel.github.io/repl/?lisp=' + encoded;
+	const hide = document.getElementById('hide').checked ? '&hide' : '';
+	const link = 'https://jmurmel.github.io/repl/?lisp=' + encoded + hide;
 
 	navigator.clipboard
 		.writeText(link)
@@ -37,9 +38,10 @@ that can be shared and will open a REPL with the code already present,
 ready to run (while still being editable).
 </div>
 <div class="text">
-Enter some Lisp code:<br>
+(1) Enter some Lisp code:<br>
 <textarea id="input" rows="20"></textarea><br>
-Click the button to generate a Murmel Online REPL URL and copy it to your clipboard:<br>
+(2) <input type="checkbox" id="hide"> Initially hide the explanations on the REPL page<br>
+(3) Click the button to generate a Murmel Online REPL URL and copy it to your clipboard:<br>
 <button id="go">Copy URL to clipboard!</button><br>
 </div>
 <script>
