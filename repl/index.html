@@ -50,10 +50,9 @@ jQuery(function($, undefined) {
 
 jQuery(function($, undefined) {
 	if (window.location.search !== '') {
-		const params = new Proxy(new URLSearchParams(window.location.search), {
-			get: (searchParams, prop) => searchParams.get(prop),
-		});
-		let value = params.lisp;
+		const params = new URLSearchParams(window.location.search);
+		const b64 = params.get('lispb64');
+		const value = b64 !== null ? atob(b64) : params.get('lisp');
 
 		if (value !== null) {
 			$('#term').terminal().insert(value);

@@ -15,13 +15,15 @@
 
 function translate() {
 	const inStr = document.getElementById('input').value;
-	const encoded = encodeURIComponent(inStr).replaceAll(')', '%29');
+	const urlEncoded = encodeURIComponent(inStr).replaceAll(')', '%29');
+	const b64 = btoa(inStr);
+	const encodedLisp = b64.length < urlEncoded.length ? ('lispb64=' + b64) : ('lisp=' + urlEncoded);
 	const hide = document.getElementById('hide').checked ? '&hide' : '';
-	const link = 'https://jmurmel.github.io/repl/?lisp=' + encoded + hide;
+	const link = 'https://jmurmel.github.io/repl/?' + encodedLisp + hide;
 
 	navigator.clipboard
 		.writeText(link)
-		.then(() => { alert("Copied the link:\n\n" + link); })
+		.then(() => { alert("Copied the link (" + link.length + " characters):\n\n" + link); })
 		.catch(() => { alert("something went wrong"); });
 }
 
