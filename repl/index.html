@@ -48,11 +48,6 @@ jQuery(function($, undefined) {
 	});
 });
 
-function bytesToBase64(bytes) {
-  const binString = String.fromCodePoint(...bytes);
-  return btoa(binString);
-}
-
 jQuery(function($, undefined) {
 	if (window.location.search !== '') {
 		const params = new URLSearchParams(window.location.search);
