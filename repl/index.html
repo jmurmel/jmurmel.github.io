@@ -44,7 +44,7 @@ jQuery(function($, undefined) {
 		}
 	}, {
 		name: 'murmel_demo', prompt: 'JMurmel> ', width: $("#term").clientWidth, height: 500,
-		greetings: 'Murmel Interpreter\nEnter a Murmel form or :command (or enter :h for command help)\n(compiling stuff or turtle graphics don´t work yet)\n'
+		greetings: 'Murmel Interpreter\nEnter a Murmel form or a :command (or enter :h for command help)\n(compiling code or turtle graphics does not work yet)\n'
 	});
 });
 
@@ -120,7 +120,7 @@ This REPL has an editable, searchable history with keyboard shortcuts:
 	<li>if the currently displayed history element is a single line: <tt>Up / Down</tt> moves within the history
 	<li>if you are in the middle of a multiline history element: <tt>Up / Down</tt> moves within the history element
 	<li>if you are in the first (last) line of a history element: <tt>Up / Down</tt> moves to the previous / next history element
-	<li><tt>CTRL+Up / CTRL+Down</tt> will move to the previous or next history element even if in the middle of a multiline history element
+	<li><tt>CTRL+Up / CTRL+Down</tt> will move to the previous or next history element even if the cursor currently is in the middle of a multiline history element
 	</ul>
 </ul>
 </div>
