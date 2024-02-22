@@ -67,6 +67,9 @@ function hide() {
 	const lnk = document.getElementById("showhide");
 	lnk.innerText = '(Show explanations)';
 	lnk.onclick = show;
+	jQuery(function($, undefined) {
+		$('#term').terminal().focus(true);
+	});
 }
 
 function show() {
