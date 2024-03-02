@@ -29,12 +29,15 @@ and begin your source file with
 mlib provides the following Common Lisp-like functions and macros:
 
 - logic, program structure
+    - [when](#macro-when), [unless](#macro-unless)
     - [not](#function-not), [and](#macro-and), [or](#macro-or)
     - [prog1, prog2](#macro-prog1-prog2)
-    - [when](#macro-when), [unless](#macro-unless), [case](#macro-case), [typecase](#macro-typecase)
+    - [case](#macro-case), [typecase](#macro-typecase)
 - conses and lists
-    - [caar..cdddr](#function-caarcdddr), [nthcdr, dotted-nthcdr, nth](#function-nthcdr-dotted-nthcdr-nth), [copy-list](#function-copy-list)
+    - [caar..cdddr](#function-caarcdddr), [nthcdr, dotted-nthcdr, nth](#function-nthcdr-dotted-nthcdr-nth), [endp](#function-endp)
+    - [copy-list](#function-copy-list), [copy-alist](#function-copy-alist), [copy-tree](#function-copy-tree)
     - [list-length](#function-list-length), [last](#function-last), [butlast](#function-butlast), [nbutlast](#function-nbutlast), [ldiff](#function-ldiff), [tailp](#function-tailp)
+    - [subst](#function-subst), [subst-if](#function-subst-if), [nsubst](#function-nsubst), [nsubst-if](#function-nsubst-if)
     - [nconc](#function-nconc), [revappend, nreconc](#function-revappend-nreconc), [member](#function-member), [adjoin](#function-adjoin)
     - [acons](#function-acons)
     - [mapcar](#function-mapcar), [maplist](#function-maplist), [mapc](#function-mapc), [mapl](#function-mapl), [mapcan](#function-mapcan), [mapcon](#function-mapcon)
@@ -44,7 +47,7 @@ mlib provides the following Common Lisp-like functions and macros:
 - places
     - [destructuring-bind](#macro-destructuring-bind)
     - [get-setf-expansion](#function-get-setf-expansion)
-    - [setf](#macro-setf), [incf, decf](#macro-incf-decf)
+    - [setf](#macro-setf), [psetf](#macro-psetf), [incf, decf](#macro-incf-decf)
     - [push](#macro-push), [pop](#macro-pop), [pushnew](#macro-pushnew)
 - numbers, characters
     - [abs](#function-abs), [min](#function-min), [max](#function-max), [zerop](#function-zerop), [evenp](#function-evenp), [oddp](#function-oddp)
@@ -109,6 +112,28 @@ as well as the following additional functions and macros:
 
 ## Description of functions and macros
 
+### Macro: when
+    (when condition forms*) -> result
+
+Since: 1.1
+
+Execute `forms` if `condition` evaluates to true
+and return the result of the last form if any.
+Otherwise if `condition` evaluates to false,
+the forms are not evaluated and the return value
+of the `when`-form is `nil`.
+
+### Macro: unless
+    (unless condition forms*) -> result
+
+Since: 1.1
+
+Execute `forms` if `condition` evaluates to false
+and return the result of the last form if any.
+Otherwise if `condition` evaluates to true,
+the forms are not evaluated and the return value
+of the `unless`-form is `nil`.
+
 ### Function: not
     (not form) -> boolean
 
@@ -140,28 +165,6 @@ the result of the first form returning non-nil otherwise.
     (prog2 first-form second-form more-forms*) -> result-2
 
 Since: 1.1
-
-### Macro: when
-    (when condition forms*) -> result
-
-Since: 1.1
-
-Execute `forms` if `condition` evaluates to true
-and return the result of the last form if any.
-Otherwise if `condition` evaluates to false,
-the forms are not evaluated and the return value
-of the `when`-form is `nil`.
-
-### Macro: unless
-    (unless condition forms*) -> result
-
-Since: 1.1
-
-Execute `forms` if `condition` evaluates to false
-and return the result of the last form if any.
-Otherwise if `condition` evaluates to true,
-the forms are not evaluated and the return value
-of the `unless`-form is `nil`.
 
 ### Macro: case
      (case keyform (keys forms*)* (t forms*)?) -> result
@@ -204,6 +207,15 @@ If there is no otherwise-clause, typecase returns nil.
 Since: 1.1
 
 `c..r` repeatedly apply `car` and/ or `cdr` as the name suggests.
+
+### Function: endp
+    (endp list) -> boolean
+
+Since: 1.4.6
+
+This is the recommended way to test for the end of a proper list. It
+returns true if `obj` is `nil`, false if `obj` is a `cons`,
+and a `type-error` for any other type of `object`.
 
 ### Function: nthcdr, dotted-nthcdr, nth
     (nthcdr n lst) -> nth-tail
@@ -267,7 +279,7 @@ Returns the length of `list-or-string` if it is a string or proper list.
 Returns `nil` if `list-or-string` is a circular list.
 
 ### Function: last
-    (last lst n?) -> last-cons-or-nil
+    (last lst n?) -> tail
 
 Since: 1.2
 
@@ -417,7 +429,7 @@ Since: 1.4
     (do ({var | (var [init-form [step-form]])}*)
         (end-test-form result-form*)
         statement*) -> result
-    
+
     (do* ({var | (var [init-form [step-form]])}*)
          (end-test-form result-form*)
          statement*) -> result
@@ -464,7 +476,31 @@ Just like `dolist`, but with vectors.
 Since: 1.2
 
 Iterates over key-value pairs of `plist-form`.
-Similar to Alexandria `doplist`, see https://alexandria.common-lisp.dev/draft/alexandria.html.
+Similar to Alexandria `doplist`,
+see https://alexandria.common-lisp.dev/draft/alexandria.html.
+
+### Function: copy-alist
+    (copy-alist alist) -> new-alist
+
+Since: 1.4.6
+
+`copy-alist` returns a copy of `alist`.
+
+The list structure of `alist` is copied, and the elements of `alist` which are conses are also copied (as conses only).
+Any other objects which are referred to, whether directly or indirectly, by the `alist` continue to be shared.
+
+### Function: copy-tree
+    (copy-tree tree) -> new-tree
+
+Since: 1.4.6
+
+Creates a copy of a tree of conses.
+
+If `tree` is not a `cons`, it is returned;
+otherwise, the result is a new cons of the results of calling `copy-tree` on the car and cdr of `tree`.
+In other words, all conses in the tree represented by `tree` are copied recursively,
+stopping only when non-conses are encountered.
+copy-tree does not preserve circularities and the sharing of substructure.
 
 ### Function: butlast
     (butlast lst n?) -> result-list
@@ -472,7 +508,8 @@ Similar to Alexandria `doplist`, see https://alexandria.common-lisp.dev/draft/al
 Since: 1.4.5
 
 `butlast` returns a copy of `lst` from which the last `n` conses have been omitted.
-If `n` is not supplied, its value is 1. If there are fewer than `n` conses in `lst`, `nil` is returned.
+If `n` is not supplied, its value is 1. If there are fewer than `n` conses in `lst`,
+`nil` is returned.
 
 ### Function: nbutlast
     (nbutlast lst n?) -> result-list
@@ -481,7 +518,8 @@ Since: 1.4.5
 
 `nbutlast` is like `butlast`, but `nbutlast` may modify `lst`.
 It changes the cdr of the cons n+1 from the end of `lst` to `nil` except
-if there are fewer than `n` conses in `lst`, `nil` is returned and `lst` is not modified.
+if there are fewer than `n` conses in `lst`, `nil` is returned
+and `lst` is not modified.
 
 ### Function: ldiff
     (ldiff lst obj) -> result-list
@@ -499,6 +537,34 @@ Since: 1.4.5
 
  Return `true` if `obj` is the same as some tail of `lst`, otherwise
  returns `false`. `lst` must be a proper list or a dotted list.
+
+### Function: subst
+    (subst new old tree [test-fn [key-fn]]) -> new-tree
+
+Since: 1.4.6
+
+Substitutes `new` for subtrees of `tree` matching `old`.
+
+### Function: subst-if
+    (subst-if new test-pred tree [key-fn]) -> new-tree
+
+Since: 1.4.6
+
+Substitutes `new` for subtrees of `tree` for which `test-pred` is true.
+
+### Function: nsubst
+    (nsubst new old tree [test-fn [key-fn]]) -> new-tree
+
+Since: 1.4.6
+
+Substitutes `new` for subtrees of `tree` matching `old`.
+
+### Function: nsubst-if
+    (nsubst-if new test-pred tree [key-fn]) -> new-tree
+
+Since: 1.4.6
+
+Substitutes `new` for subtrees of `tree` for which `test-pred` is true.
 
 ### Macro: destructuring-bind
     (destructuring-bind (vars*) expression forms*)
@@ -530,8 +596,24 @@ knows a corresponding setting form, which currently are:
 - symbols
 - car..cdddr
 - nth
-- elt seqref
+- elt, seqref
+- hashref, gethash
 - svref, bvref, bit, sref, char
+- values
+
+### Macro: psetf
+    (psetf pair*) -> result
+
+Since: 1.4.6
+
+Takes pairs of arguments like `setf`. The first is a place and the second
+is the value that is supposed to go into that place.
+
+If more than one pair is supplied then the assignments of new values to places are done in parallel.
+
+Similar to CL's `psetf` except: Murmel's `psetf`'s return value is the multiple-values
+returned by the storing form for the last place, or nil if there are no pairs,
+similar to `setf`.
 
 ### Macro: incf, decf
     (incf place delta-form*) -> new-value
@@ -811,16 +893,16 @@ of the sequences. The result sequence is as long as the shortest of the sequence
 Similar to CL `map`.
 
 ### Function: map-into
-    (map-into result-list function sequence*) -> result-list
+    (map-into result-sequence function sequence*) -> result-sequence
 
 Since: 1.2
 
-Destructively modifies `result-list` to contain the results
-of applying `function` to each element in the argument lists in turn.
-The iteration terminates when the shortest list (of any of
-the lists or the result-list) is exhausted.
+Destructively modifies `result-sequence` to contain the results
+of applying `function` to each element in the argument sequences in turn.
+The iteration terminates when the shortest sequence (of any of
+the sequences or the result-sequence) is exhausted.
 
-If `result-list` is `nil`, `map-into` returns `nil`.
+If `result-sequence` is `nil`, `map-into` returns `nil`.
 
 Similar to CL `map-into`.
 
@@ -932,23 +1014,31 @@ and will be applied to subsequent items of the given sequences.
     (notany predicate sequence+) == (not (some predicate sequence+))
 
 ### Function: write-char
-    (write-char c) -> c
+    (write-char c [dest]) -> c
 
 Since: 1.1
 
 `write-char` outputs `c` to stdout.
 
 ### Function: terpri, prin1, princ, print
+    (terpri [dest]) -> nil
+    (prin1 obj [dest]) -> obj
+    (princ obj [dest]) -> obj
+    (print obj [dest]) -> obj
 
 Since: 1.1
 
 ### Macro: with-output-to-string
-    (with-output-to-string (var) forms*)
+    (with-output-to-string (var) forms*) -> string
 
 Since: 1.4.2
 
+Similar to CL's `with-output-to-string` except:
+CL's optional `string-form` and `element-type` are not supported,
+therefore the return value of `with-output-to-string` always is the string.
+
 ### Function: pprint
-    (pprint object) -> t
+    (pprint object [dest]) -> t
 
 Since: 1.1
 
@@ -1138,7 +1228,7 @@ Example usage:
 
     (string-split "a b     c
     d" "[ \\t\\n]")
-    ; ==> #("a" "b" "c" "d") 
+    ; ==> #("a" "b" "c" "d")
 
 ### Function: string-join
     (string-join delim first-str . more-strings) -> string

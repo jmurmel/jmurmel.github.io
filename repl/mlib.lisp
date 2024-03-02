@@ -25,7 +25,8 @@
 ;;;     - [case](#macro-case), [typecase](#macro-typecase)
 
 ;;; - conses and lists
-;;;     - [caar..cdddr](#function-caarcdddr), [nthcdr, dotted-nthcdr, nth](#function-nthcdr-dotted-nthcdr-nth), [copy-list](#function-copy-list)
+;;;     - [caar..cdddr](#function-caarcdddr), [nthcdr, dotted-nthcdr, nth](#function-nthcdr-dotted-nthcdr-nth), [endp](#function-endp)
+;;;     - [copy-list](#function-copy-list), [copy-alist](#function-copy-alist), [copy-tree](#function-copy-tree)
 ;;;     - [list-length](#function-list-length), [last](#function-last), [butlast](#function-butlast), [nbutlast](#function-nbutlast), [ldiff](#function-ldiff), [tailp](#function-tailp)
 ;;;     - [subst](#function-subst), [subst-if](#function-subst-if), [nsubst](#function-nsubst), [nsubst-if](#function-nsubst-if)
 ;;;     - [nconc](#function-nconc), [revappend, nreconc](#function-revappend-nreconc), [member](#function-member), [adjoin](#function-adjoin)
@@ -360,6 +361,20 @@
 (m%def-macro-fun cdadr (lst) `(cdr (cadr ,lst)))
 (m%def-macro-fun cddar (lst) `(cdr (cdar ,lst)))
 (m%def-macro-fun cdddr (lst) `(cdr (cddr ,lst)))
+
+
+;;; = Function: endp
+;;;     (endp list) -> boolean
+;;;
+;;; Since: 1.4.6
+;;;
+;;; This is the recommended way to test for the end of a proper list. It
+;;; returns true if `obj` is `nil`, false if `obj` is a `cons`,
+;;; and a `type-error` for any other type of `object`.
+(m%def-macro-fun endp (obj)
+  `(cond ((consp ,obj) nil)
+         ((null  ,obj) t)
+         (t (error 'simple-type-error "not a list: %s" ,obj))))
 
 
 (defun m%nonneg-integer-number (n)
@@ -1043,6 +1058,70 @@
 
 ; more lists **********************************************************
 
+;;; = Function: copy-alist
+;;;     (copy-alist alist) -> new-alist
+;;;
+;;; Since: 1.4.6
+;;;
+;;; `copy-alist` returns a copy of `alist`.
+;;;
+;;; The list structure of `alist` is copied, and the elements of `alist` which are conses are also copied (as conses only).
+;;; Any other objects which are referred to, whether directly or indirectly, by the `alist` continue to be shared.
+(defun copy-alist (alist)
+  "Return a new association list which is EQUAL to ALIST."
+  (if (endp alist)
+      alist
+      (let ((result
+             (cons (if (atom (car alist))
+                       (car alist)
+                       (cons (caar alist) (cdar alist)))
+                   nil)))
+        (do ((x (cdr alist) (cdr x))
+             (splice result
+                     (cdr (rplacd splice
+                                  (cons
+                                   (if (atom (car x))
+                                       (car x)
+                                       (cons (caar x) (cdar x)))
+                                   nil)))))
+            ((endp x)))
+        result)))
+
+
+;;; = Function: copy-tree
+;;;     (copy-tree tree) -> new-tree
+;;;
+;;; Since: 1.4.6
+;;;
+;;; Creates a copy of a tree of conses.
+;;;
+;;; If `tree` is not a `cons`, it is returned;
+;;; otherwise, the result is a new cons of the results of calling `copy-tree` on the car and cdr of `tree`.
+;;; In other words, all conses in the tree represented by `tree` are copied recursively,
+;;; stopping only when non-conses are encountered.
+;;; copy-tree does not preserve circularities and the sharing of substructure.
+(defun copy-tree (object)
+  "Recursively copy trees of conses."
+  (if (consp object)
+      (let* ((%car (car object))
+             (result #1=(list (if (consp %car)
+                                  (copy-tree %car)
+                                  %car))))
+
+        (let loop ((last-cons result)
+                   (%cdr (cdr object)))
+          (if (atom %cdr)
+              (rplacd last-cons %cdr)
+              (let* ((%car (car %cdr))
+                     (new-cons #1#))
+                (rplacd last-cons new-cons)
+                (loop new-cons (cdr %cdr)))))
+
+        result)
+
+      object))
+
+
 ;;; = Function: butlast
 ;;;     (butlast lst n?) -> result-list
 ;;;
@@ -1145,50 +1224,46 @@
 ;;;     (subst new old tree [test-fn [key-fn]]) -> new-tree
 ;;;
 ;;; Since: 1.4.6
+;;;
+;;; Substitutes `new` for subtrees of `tree` matching `old`.
+(progn
 (defun subst (new old tree . args)
-  "Substitutes new for subtrees matching old."
-
-  (let* ((test (if args
-                   (car args)
-                   eql))
-         (key (cadr args))
-         (satisfies-the-test (if (cdr args)
-                                 (lambda (old new) (test old (key new)))
-                                 (lambda (old new) (test old new)))))
+  (let* #1=((test (if args
+                      (car args)
+                      eql))
+            (key (cadr args))
+            (satisfies-the-test (if (cdr args)
+                                    (lambda (old new) (test old (key new)))
+                                    (lambda (old new) (test old new)))))
 
     (labels ((s (subtree)
-               (cond ((satisfies-the-test old subtree) new)
-                     ((atom subtree) subtree)
-                     (t (let ((%car (s (car subtree)))
-                              (%cdr (s (cdr subtree))))
-                          (if (and (eq %car (car subtree))
-                                   (eq %cdr (cdr subtree)))
-                              subtree
-                              (cons %car %cdr)))))))
+               (cond #2=((satisfies-the-test old subtree) new)
+                     #3=((atom subtree) subtree)
+                     #4=(t (let ((%car (s (car subtree)))
+                                 (%cdr (s (cdr subtree))))
+                             (if (and (eq %car (car subtree))
+                                      (eq %cdr (cdr subtree)))
+                                 subtree
+                                 (cons %car %cdr)))))))
       (s tree))))
 
 
 ;;; = Function: subst-if
-;;;     (subst-if new test-fn tree [key-fn]) -> new-tree
+;;;     (subst-if new test-pred tree [key-fn]) -> new-tree
 ;;;
 ;;; Since: 1.4.6
+;;;
+;;; Substitutes `new` for subtrees of `tree` for which `test-pred` is true.
 (defun subst-if (new test tree . args)
-  "Substitutes new for subtrees for which test is true."
-
-  (let* ((key (car args))
-         (satisfies-the-test (if args
-                                 (lambda (x) (test (key x)))
-                                 (lambda (x) (test x)))))
+  (let* #5=((key (car args))
+            (satisfies-the-test (if args
+                                    (lambda (x) (test (key x)))
+                                    (lambda (x) (test x)))))
 
     (labels ((s (subtree)
-               (cond ((satisfies-the-test subtree) new)
-                     ((atom subtree) subtree)
-                     (t (let ((%car (s (car subtree)))
-                              (%cdr (s (cdr subtree))))
-                          (if (and (eq %car (car subtree))
-                                   (eq %cdr (cdr subtree)))
-                              subtree
-                              (cons %car %cdr)))))))
+               (cond #6=((satisfies-the-test subtree) new)
+                     #3#
+                     #4#)))
       (s tree))))
 
 
@@ -1196,55 +1271,48 @@
 ;;;     (nsubst new old tree [test-fn [key-fn]]) -> new-tree
 ;;;
 ;;; Since: 1.4.6
+;;;
+;;; Substitutes `new` for subtrees of `tree` matching `old`.
 (defun nsubst (new old tree . args)
-  "Substitute NEW for subtrees matching OLD."
+  (let* #1#
 
-  (let* ((test (if args
-                   (car args)
-                   eql))
-         (key (cadr args))
-         (satisfies-the-test (if (cdr args)
-                                 (lambda (old new) (test old (key new)))
-                                 (lambda (old new) (test old new)))))
+    (labels ((do-subtree (last subtree)
+               (when (satisfies-the-test old subtree)
+                 (rplacd last subtree))
+               #7=(when (consp subtree)
+                    (rplaca subtree (s (car subtree)))
+                    (do-subtree subtree (cdr subtree))))
 
-    (labels ((s (subtree)
-               (cond ((satisfies-the-test old subtree) new)
-                     ((atom subtree) subtree)
-                     (t (let loop ((last nil)
-                                   (subtree subtree))
-                          (if (satisfies-the-test old subtree)
-                              (rplacd last subtree))
-                          (when (consp subtree)
-                            (rplaca subtree (s (car subtree)))
-                            (loop subtree (cdr subtree))))
-                        subtree))))
+             (s (subtree)
+               (cond #2#
+                     #3#
+                     #8=(t (do-subtree nil subtree)
+                           subtree))))
+
       (s tree))))
 
 
 ;;; = Function: nsubst-if
-;;;     (nsubst-if new test-fn tree [key-fn]) -> new-tree
+;;;     (nsubst-if new test-pred tree [key-fn]) -> new-tree
 ;;;
 ;;; Since: 1.4.6
+;;;
+;;; Substitutes `new` for subtrees of `tree` for which `test-pred` is true.
 (defun nsubst-if (new test tree . args)
-  "Substitute NEW for subtrees of TREE for which TEST is true."
+  (let* #5#
 
-  (let* ((key (car args))
-         (satisfies-the-test (if args
-                                 (lambda (x) (test (key x)))
-                                 (lambda (x) (test x)))))
+    (labels ((do-subtree (last subtree)
+               (when (satisfies-the-test subtree)
+                 (rplacd last subtree))
+               #7#)
 
-    (labels ((s (subtree)
-               (cond ((satisfies-the-test subtree) new)
-                     ((atom subtree) subtree)
-                     (t (let loop ((last nil)
-                                   (subtree subtree))
-                          (if (satisfies-the-test subtree)
-                              (rplacd last subtree))
-                          (when (consp subtree)
-                            (rplaca subtree (s (car subtree)))
-                            (loop subtree (cdr subtree))))
-                        subtree))))
+             (s (subtree)
+               (cond #6#
+                     #3#
+                     #8#)))
+
       (s tree))))
+)
 
 
 ; places **************************************************************
@@ -2078,10 +2146,10 @@
 ;;; If `sequence` is a list, the result is a fresh list.
 (defun copy-seq (seq)
   (cond
-    ((null seq))
+    ((null seq)    nil)
     ((consp seq)   (copy-list seq))
     ((vectorp seq) (vector-copy seq))
-    (t      (error 'simple-type-error "copy-seq - %s is not a sequence" seq))))
+    (t             (error 'simple-type-error "copy-seq - %s is not a sequence" seq))))
 
 
 ;;; = Function: length
@@ -2120,7 +2188,7 @@
              to))
 
     (cond
-      ((null seq))
+      ((null seq)               nil)
       ((consp seq)              (reverse/list seq ()))
       ((stringp seq)            (reverse/vector seq (make-array (vector-length seq) 'character) sref sset))
       ((simple-vector-p seq)    (reverse/vector seq (make-array (vector-length seq)) svref svset))
@@ -2159,13 +2227,13 @@
                      (loop (1+ left-index) (1- right-index)))))))
 
     (cond
-      ((null seq))
+      ((null seq)               nil)
       ((consp seq)              (nreverse/list seq))
       ((stringp seq)            (nreverse/vector seq sref sset))
       ((simple-vector-p seq)    (nreverse/vector seq svref svset))
       ((bit-vector-p seq)       (nreverse/vector seq bvref bvset))
       ((vectorp seq)            (nreverse/vector seq seqref seqset))
-      (t (error 'simple-type-error "nreverse - %s is not a sequence" seq)))))
+      (t                        (error 'simple-type-error "nreverse - %s is not a sequence" seq)))))
 
 
 ;;; = Function: remove-if
@@ -2196,13 +2264,13 @@
                    (setq append-to (cdr (rplacd append-to (list tmp)))))))))
 
     (cond
-      ((null seq))
+      ((null seq)                nil)
       ((consp seq)               (remove-if/list seq))
       ((stringp seq)             (list->string            (remove-if/vector seq)))
       ((simple-vector-p seq)     (list->simple-vector     (remove-if/vector seq)))
       ((simple-bit-vector-p seq) (list->bit-vector        (remove-if/vector seq)))
       ((vectorp seq)             (list->simple-vector     (remove-if/vector seq)))
-      (t (error 'simple-type-error "remove-if - %s is not a sequence" seq)))))
+      (t                         (error 'simple-type-error "remove-if - %s is not a sequence" seq)))))
 
 
 ;;; = Function: remove
@@ -2217,7 +2285,7 @@
 
 
 (defun m%list->sequence (lst result-type)
-  (cond ((null result-type)                  )
+  (cond ((null result-type)                  nil)
         ((eq result-type 'list)              lst)
         ((eq result-type 'cons)              (or lst (error 'simple-type-error "nil is not a sequence of type cons")))
         ((eq result-type 'vector)            (list->simple-vector lst))
@@ -2226,7 +2294,7 @@
         ((eq result-type 'bit-vector)        (list->bit-vector lst))
         ((eq result-type 'string)            (list->string lst))
         ((eq result-type 'simple-string)     (list->string lst))
-        (t (error "type %s is not implemented" result-type))))
+        (t                                   (error "type %s is not implemented" result-type))))
 
 
 ;;; = Function: map
@@ -2311,7 +2379,7 @@
           (if sequences
               ;; 1 sequence given
               (cond
-                ((null (setq seq (car sequences))))
+                ((null (setq seq (car sequences))) nil)
 
                 ((consp seq)
                  (let loop ((l seq))

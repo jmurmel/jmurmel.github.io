@@ -155,7 +155,19 @@ Shorthand for a proper list
     '(a b c)              ; ==> (a b c)
 
 
+### Labeled subobjects
+
+Since: 1.4.6
+
+    '(a #1=b #1# c)       ; ==> (a b b c)
+
+Note that a label can only be used after it's value was completely read,
+i.e. `'#1=(a b . #1#) is an error in Murmel (while valid in CL).
+
+
 ### Hashtables
+
+Since: 1.3.1
 
     #H(eql k1 v1 k2 v2 k3 v3)
 
@@ -388,7 +400,6 @@ Murmel's type system (and JMurmel's corresponding host types) look like so:
                   parse-error                 SExpressionReader.ParseError extends LambdaJError
 
 
-                                              ;;; extends java.lang.RuntimeException
                   arithmetic-error            java.lang.ArithmeticException extends RuntimeException
                       (overflow, underflow)
       
@@ -396,20 +407,21 @@ Murmel's type system (and JMurmel's corresponding host types) look like so:
                       simple-type-error       SimpleTypeError extends ClassCastException
                       invalid-index-error     InvalidIndexError extends IndexOutOfBoundsException
       
-                  file-error                  java.nio.file.InvalidPathException extends IllegalArgumentException extends RuntimeException
+                  file-error                  java.nio.file.InvalidPathException
+                                              extends IllegalArgumentException extends RuntimeException
 
 
-                                              ;;; extends java.io.IOException
                   stream-error                java.io.IOException
                       end-of-file             java.io.EOFException extends IOException
                       reader-error            ReaderError extends IOException
-                                              NOTE: CL's reader-error has two superclasses: stream-error and parse-error
-                                                    if c was a reader-error then both
-                                                    (typep c 'stream-error) and (typep c 'parse-error) are true
+                                              NOTE:
+                                              CL's reader-error has two superclasses: stream-error and parse-error
+                                              if c was a reader-error then both
+                                              (typep c 'stream-error) and (typep c 'parse-error) are true
 
 The above is a subset of CLtL2's predefined data types,
-see "CLtL2 2. Data Types" https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node15.html,
-the condition hierarchy is a subset of CLtL2 predefined condition types,
+see "CLtL2 2. Data Types" https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node15.html
+Murmel's condition hierarchy is a subset of CLtL2 predefined condition types,
 see "CLtL2 29.5. Predefined Condition Types" https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node346.html
 and "CLHS 9.1.1 Condition Types" http://clhs.lisp.se/Body/09_aa.htm
 
@@ -514,6 +526,8 @@ The second argument to `define` is optional and defaults to `nil`.
     (define *global-var* 42)               ; ==> *gloval-var*
     (define f1 (lambda (p1 p2) (+ p1 p2))) ; ==> f1
 
+`define` forms can appear inside toplevel `let, let*, letrec, multiple-value-bind` forms.
+
 ### (defun symbol (params\*) docstring? forms\*) -> symbol
 
 `defun` is a shorthand for defining functions:
@@ -526,6 +540,24 @@ An optional docstring is ignored.
 Arguments to `defun` are not evaluated.
 
     (defun f2 (p1 p2) (+ p1 p2)) ; ==> f2
+
+`defun` forms that appear inside toplevel `let, let*, letrec, multiple-value-bind` forms
+will bind a globally visible symbol to a closure (aka let-over-lambda):
+
+    (let ((counter 0))
+      (defun pre-increment-counter ()
+        (setq counter (1+ counter)))
+
+      (defun pre-decrement-counter ()
+        (setq counter (1- counter)))
+
+      (defun peek-counter ()
+        counter))
+
+    (pre-increment-counter)  ; ==> 1
+    (pre-increment-counter)  ; ==> 2
+    (pre-decrement-counter)  ; ==> 1
+    (peek-counter)  ; ==> 1
 
 ### (defmacro name (params\*) docstring? forms\*) -> symbol<br/>(defmacro name) -> prev-name
 
@@ -1000,7 +1032,8 @@ Examples:
 
     (assoc 'a-key '((key-1 1) (key-2 2) (a-key 3) (key-4 4)))
       ; ==> (a-key 3)
-    (cdr (assoc 'a-key '((key-1 . 1) (key-2 . 2) (a-key . 3) (key-4 . 4))))
+    (cdr
+      (assoc 'a-key '((key-1 . 1) (key-2 . 2) (a-key . 3) (key-4 . 4))))
       ; ==> 3
     (assoc nil '((key-1 1) nil (nil 2) (a-key 3) (key-4 4)))
       ; ==> (nil 2)
@@ -1170,12 +1203,11 @@ provides.
 
 ## I/O
 
-### read, write, writeln, lnwrite
+### read
 
     (read eof-obj?) -> obj
-    (write   obj  [print-escape-p [dest]]) -> obj
-    (writeln [obj [print-escape-p [dest]]]) -> obj
-    (lnwrite [obj [print-escape-p [dest]]]) -> obj
+
+Read an S-expression from stdin.
 
 `read` w/o an argument will throw an error when encountering EOF.
 If an optional argument was given then EOF does not throw an error
@@ -1193,13 +1225,22 @@ but
 Note that if an EOF occurs while reading an S-expression an error
 will be thrown even when `eof-obj` was used. 
 
+
+### write, writeln, lnwrite
+
+    (write   obj  [print-escape-p [dest]]) -> obj
+    (writeln [obj [print-escape-p [dest]]]) -> obj
+    (lnwrite [obj [print-escape-p [dest]]]) -> obj
+
+Write a Lisp object as an S-expression to `dest`.
+
 `write` accepts an optional boolean argument `print-escape-p`.
 `writeln` and `lnwrite` accept an optional argument `obj`
 and an optional boolean argument `print-escape-p`.
 
 `write`, `writeln` and `lnwrite` accept an optional argument `dest`
-which may be `nil`, `t` or an adjustable string.
-`nil`and `t` means: write to stdout, else write to `dest`.
+which may be `t` or an adjustable string.
+`t` means: write to stdout, else write to `dest`.
 (Implementation note: any Java object implementing `java.lang.Appendable`
 is acceptable.)
 
@@ -1239,42 +1280,56 @@ will be signalled as an `end-of-file` condition.
     (read-from-string "          " 'eof 5) ; ==> eof, 10
 
 
-### (read-textfile-lines filenamestr [charset]) -> result-string-vector
+### (read-textfile-lines filename [charset]) -> result-string-vector
 
 Since: 1.4
 
-Read the file with the given filename and return it's contents
+Read the file with the given filename (or stdin if `filename` is `t`) and return it's contents
 as a `simple-vector` containing one `simple-string` for each line.
 
+If `charset` is `nil` then `UTF-8` will be used.
 
-### (read-textfile filenamestr [charset]) -> result-string
+
+### (read-textfile filename [charset [translate-lineend-p]]) -> result-string
 
 Since: 1.4
 
-Read the file with the given filename and return it's contents
-as a `string`. Lineend character sequences will be normalized to `#\Newline`.
+Read the file with the given filename (or stdin if `filename` is `t`)
+and return it's contents as a mutable `string`.
+
+If `charset` is `nil` then `UTF-8` will be used.
+
+If `translate-lineend-p` is omitted or non-nil then (possibly OS-dependent)
+lineend character sequences will be normalized to `#\Newline`.
 
 `charset` defaults to UTF-8.
 
 
-### (write-textfile-lines filenamestr string-sequence  [appendp [charset]]) -> nil
+### (write-textfile-lines filename string-sequence  [appendp [charset [translate-lineend-p]]]) -> nil
 
 Since: 1.4
 
 Write all elements (which must be of type `string`)
-of `string-sequence` to the file `filenamestr`.
+of `string-sequence` to the file `filename` (or stdout if `filename` is `t`).
 Each element (line) will be terminated with the OS-default line-end character(-sequence).
 (Note: with the JVM this can be set using -Dline.separator.)
 
-`charset` defaults to UTF-8.
+If `charset` is `nil` then `UTF-8` will be used.
+
+If `translate-lineend-p` is omitted or non-nil then each #\Newline character
+will be written as the OS-dependent line-end character(-sequence).
 
 
-### (write-textfile filenamestr string  [appendp [charset]]) -> nil
+### (write-textfile filename string  [appendp [charset [translate-lineend-p]]]) -> nil
 
 Since: 1.4
 
-Write `string` to the file `filenamestr`.
-Each #\Newline character will be written as the OS-default line-end character(-sequence).
+Write `string` to the file `filename` (or stdout if `filename` is `t`).
+
+If `charset` is `nil` then `UTF-8` will be used.
+
+If `translate-lineend-p` is omitted or non-nil then each #\Newline character
+will be written as the OS-dependent line-end character(-sequence).
 
 
 ### (format dest formatstr args*), (format-locale dest locale formatstr args*)
@@ -1285,21 +1340,22 @@ The first argument `dest` can be `t`, `nil` or an adjustable string.
 `format`'s parameters work as with `java.lang.String.format()`
 which is similar to C's `printf()`.
 
-    (format t "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
+    (format t
+      "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
 
 `format-locale` works similar to format except it has an additional
 second string parameter that should be a locale, `nil` means use Java's
 default locale.
 
-    (format-locale t
-       "de-DE" "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
+    (format-locale t "de-DE"
+      "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
 
 `format nil` and `format-locale nil` work similar
 to `format t` and `format-locale t` except they don't write to stdout
 but return the string.
 
-    (format-locale nil
-       "de-DE" "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
+    (format-locale nil "de-DE"
+      "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
 
 
 ### Misc
@@ -1537,8 +1593,13 @@ width/ height will be used.
 If padding is omitted or nil then 40 will be used.
 The newly created frame will not yet be visible (see open-frame below).
 
-    (let ((window-title "test") (optwidthpixels 100) (optheightpixels 100) (optpaddingpixels 10))
-      (make-frame window-title optwidthpixels optheightpixels optpaddingpixels)) ; ==> frame
+    (let ((window-title "test")
+          (optwidthpixels 100)
+          (optheightpixels 100)
+          (optpaddingpixels 10))
+      (make-frame window-title
+        optwidthpixels optheightpixels optpaddingpixels))
+      ; ==> frame
 
 ### (current-frame) -> frame
 
@@ -1724,7 +1785,8 @@ Murmel language:
 
 Compiler issues:
 
-- `define`/ `defun`/ `defmacro` only work as top level forms or within a `progn` form,
+- `define`/ `defun`/ `defmacro` only work as top level forms
+  or within `progn, let, let*, letrec` or `multiple-value-bind` forms,
   other use as non-toplevel form will throw a "not-yet-implemented" compiler error.
 - `define`-ing an already `define`-d symbol is not supported
 - `macroexpand-1` is limited to quoted forms
@@ -1736,7 +1798,7 @@ Compiler issues:
 
 ## Copyright 
 
-Murmel and JMurmel are Copyright (C) 2020-2023 Robert Mayer.
+Murmel and JMurmel are Copyright (C) 2020-2024 Robert Mayer.
 
 This work is licensed under the terms of the MIT license.
 For a copy, see https://opensource.org/licenses/MIT.
