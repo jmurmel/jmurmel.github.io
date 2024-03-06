@@ -53,7 +53,7 @@ const murmel = (async function () {
 jQuery(function($, undefined) {
 	$('#term').terminal(async function(command) {
 		if (command !== '') {
-			var result = await (await murmel).evalString(String(command));
+			const result = await (await murmel).evalString(String(command));
 			if (result != undefined) {
 				this.echo(String(result));
 			}
