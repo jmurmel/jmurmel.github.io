@@ -28,23 +28,7 @@
 $.terminal.syntax('lisp');
 
 const murmel = (async function () {
-	await cheerpjInit({ preloadResources: {
-		"/lt/8/jre/lib/rt.jar":[0,131072,10223616,10878976,11403264,11534336,11796480,11927552,12320768,12451840,15204352,15335424,15466496,15597568,17694720,17825792,18350080,18481152,21364736,21495808,21626880,21757952,22020096,22937600,23199744,23461888,23724032,26869760],
-		"/lt/8/jre/lib/cheerpj-awt.jar":[0,131072],
-		"/lt/etc/passwd":[0,131072],
-		"/lt/etc/localtime":[],
-		"/lt/8/ext/meta-index":[0,131072],
-		"/lt/8/ext":[],
-		"/lt/8/ext/index.list":[],
-		"/lt/8/ext/sunjce_provider.jar":[],
-		"/lt/8/jre/lib/jsse.jar":[0,131072,786432,917504],
-		"/lt/8/jre/lib/jce.jar":[0,131072],
-		"/lt/8/jre/lib/charsets.jar":[0,131072,1703936,1835008],
-		"/lt/8/jre/lib/resources.jar":[0,131072,917504,1179648],
-		"/lt/8/jre/lib/javaws.jar":[0,131072,1441792,1703936],
-		"/lt/8/jre/lib/meta-index":[0,131072],
-		"/lt/8/jre/lib":[]
-	} });
+	await cheerpjInit();
 	const murmelJar = await cheerpjRunLibrary("/app/repl/jmurmel.jar");
 	const StringRepl = await murmelJar.io.github.jmurmel.LambdaJ$StringRepl;
 	return await StringRepl.makeStringRepl();

@@ -479,7 +479,7 @@ In addition to `nil` and `t` the symbols of the special forms are reserved, i.e.
 may not be used as a function nor as a variable:
 
     nil, t,
-    lambda, quote, cond, labels, if, define, defun, let, let*, letrec,
+    lambda, quote, cond, labels, if, define, defun, let, let*, letrec, macrolet,
     setq, progn, catch, thwrow, unwind-protect, try,
     multiple-value-bind, multiple-value-call,
     defmacro, declaim, load, require, provide
@@ -679,6 +679,16 @@ are defined (have a value) while eval'ing the `bindingform`.
 That way a let-bound variable could be a recursive lambda.
 
     (letrec ((x 1) (y (+ x 1))) (write y))
+
+
+### (macrolet ((symbol params docstring? forms)\*) forms\*) -> result
+
+Since: 1.4.7
+
+`macrolet` defines local macros and executes `forms` using the local definitions.
+It is an error to shadow local macros with a local function (see `labels`)
+or with a named-let loop label.
+A docstring if given will be ignored.
 
 
 ### (catch tagform forms\*) -> result
@@ -899,7 +909,7 @@ Return `t` if any of the following is true
 Examples:
 
     (eql 2 2) ; ==> t
-    (eql #\a (car "aaa")) ; ==> t
+    (eql #\a (sref "aaa" 0)) ; ==> t
     (eql -0.0 0.0) ; ==> nil
 
 ### (equal a b) -> boolean
@@ -967,12 +977,10 @@ while in Common Lisp that would signal a `type-error`.
 ### (car list) -> 1st element of list
 
     (car '(a b c)) ; ==> a
-    (car "abc") ; ==> #\a
 
 ### (cdr list) -> rest of list
 
     (cdr '(a b c)) ; ==> (b c)
-    (cdr "abc") ; ==> "bc"
 
 ### (cons e1 e2) -> conscell
 
@@ -1001,14 +1009,13 @@ Replace the value of the CAR or CDR slot of a cons cell.
 ### (append lists\*) -> list
 
 `append` nondestructively append it's arguments. All arguments except the last
-are shallow copied, all arguments except the last must be lists.
+are shallow copied, all arguments except the last must be proper lists.
 
     (append)                    ; ==> nil
     (append 'a)                 ; ==> a
     (append '(a b) 'c)          ; ==> (a b . c)
     (append '(a b) '(c d))      ; ==> (a b c d)
-    (append '(a . b) '(c d))    ; ==> (a b c d)
-    (append '(a . b) '(c . d))  ; ==> (a b c . d)
+    (append '(a b) '(c . d))    ; ==> (a b c . d)
 
 ### (assq key alist) -> cons or nil
 
@@ -1052,13 +1059,22 @@ Only one-dimensional arrays of element-type `t`, `'bit` or `'character` are supp
     (vector-length v) -> length
     (vector-copy v [adjustablep]) -> fresh-copy
     (vector-fill v new-elem) -> vector
-    (vector-add v elem) -> 0-position-of-added-element
+    (vector-add v elem [pos]) -> position-of-added-element
     (vector->list v) -> list
     (list->vector lst [adjustablep]) -> vector
 
 Since: 1.3
 
-`vector-add` is similar to CL's `vector-push-extend` but with swapped parameters.
+`vector-add` is similar to CL's `vector-push-extend` but with swapped parameters,
+and Murmel's `vector-add` accepts an optional parameter `pos`.
+
+### vector-remove
+    (vector-remove adjustable-vector pos) -> removed-element
+
+Since: 1.4.7
+
+`vector-remove` removes the element at index `pos`, moves the following elements
+and decreases the vector's size.
 
 ### svlength, svref, svset, vector
 
@@ -1779,14 +1795,13 @@ methodname/ murmelcode tupels, and returns a Java object that implements
 
 Murmel language:
 
-- macrolet
 - eval-when
 - multithreading
 
 Compiler issues:
 
 - `define`/ `defun`/ `defmacro` only work as top level forms
-  or within `progn, let, let*, letrec` or `multiple-value-bind` forms,
+  or within `progn, let, let*, letrec, labels` or `multiple-value-bind` forms,
   other use as non-toplevel form will throw a "not-yet-implemented" compiler error.
 - `define`-ing an already `define`-d symbol is not supported
 - `macroexpand-1` is limited to quoted forms

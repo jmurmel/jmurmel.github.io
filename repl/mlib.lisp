@@ -52,6 +52,7 @@
 ;;;     - [elt](#function-elt), [copy-seq](#function-copy-seq), [length](#function-length)
 ;;;     - [reverse](#function-reverse), [nreverse](#function-nreverse)
 ;;;     - [remove-if](#function-remove-if), [remove](#function-remove)
+;;;     - [concatenate](#function-concatenate)
 ;;;     - [map](#function-map), [map-into](#function-map-into), [reduce](#function-reduce)
 
 ;;; - hash tables
@@ -73,6 +74,7 @@
 ;;;
 ;;; - conses and lists
 ;;;     - [circular-list](#function-circular-list)
+;;;     - [mappend](#function-mappend), [mappend-tails](#function-mappend-tails)
 ;;; - iteration
 ;;;     - [doplist](#macro-doplist)
 ;;; - higher order
@@ -481,11 +483,11 @@
 
 
 ;;; = Function: list-length
-;;;     (list-length list-or-string) -> length
+;;;     (list-length list) -> length
 ;;;
 ;;; Since: 1.1
 ;;;
-;;; Returns the length of `list-or-string` if it is a string or proper list.
+;;; Returns the length of `list` if it is a string or proper list.
 ;;; Returns `nil` if `list-or-string` is a circular list.
 (defun list-length (lst)
   ;; see http://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node149.html
@@ -520,73 +522,69 @@
 ;;; If `n` is zero, the atom that terminates list is returned.
 ;;; If `n` is greater than or equal to the number of cons cells in list,
 ;;; the result is `lst`.
-(defmacro m%last0-macro ()
-  `(let loop ((rest lst))
-     (if (consp rest)
-         (loop (cdr rest))
-         rest)))
+(macrolet ((m%last0-macro ()
+             `(let loop ((rest lst))
+                   (if (consp rest)
+                       (loop (cdr rest))
+                       rest)))
 
-(defun m%last0 (lst)
-  (m%last0-macro))
+           (m%last1-macro ()
+             `(let loop ((rest lst))
+                   (if (consp (cdr rest))
+                       (loop (cdr rest))
+                       rest)))
 
-(defmacro m%last1-macro ()
-  `(let loop ((rest lst))
-     (if (consp (cdr rest))
-         (loop (cdr rest))
-         rest)))
+           ;; m%lastn-macro won't work for n <= 0.
+           ;; This causes no ill effect because the code below avoids this,
+           ;; and then m%lastn-macro is undefined so that user code doesn't see it.
+           (m%lastn-macro ()
+             (let ((scan (gensym "scan"))
+                   (pop (gensym "pop")))
+               `(let ((returned-lst lst)
+                      (checked-lst lst)
+                      (n n))
+                  (let ,scan ()
+                       (setq checked-lst (cdr checked-lst))
+                       (if (atom checked-lst)
 
-(defun m%last1 (lst)
-  (m%last1-macro))
+                           returned-lst
 
-;; m%lastn-macro won't work for n <= 0.
-;; This causes no ill effect because the code below avoids this,
-;; and then m%lastn-macro is undefined so that user code doesn't see it.
-(defmacro m%lastn-macro ()
-  (let ((scan (gensym "scan"))
-        (pop (gensym "pop")))
-    `(let ((returned-lst lst)
-           (checked-lst lst)
-           (n n))
-       (let ,scan ()
-         (setq checked-lst (cdr checked-lst))
-         (if (atom checked-lst)
+                           (if (= (setq n (1- n)) 0)
+                               (let ,pop ()
+                                    (setq returned-lst (cdr returned-lst)
+                                          checked-lst (cdr checked-lst))
+                                    (if (atom checked-lst)
+                                        returned-lst
+                                        (,pop)))
+                 (,scan))))))))
 
-             returned-lst
+  (defun m%last0 (lst)
+    (m%last0-macro))
 
-             (if (= (setq n (1- n)) 0)
-                 (let ,pop ()
-                   (setq returned-lst (cdr returned-lst))
-                   (setq checked-lst (cdr checked-lst))
-                   (if (atom checked-lst)
-                       returned-lst
-                       (,pop)))
-                 (,scan)))))))
+  (defun m%last1 (lst)
+    (m%last1-macro))
 
-(defun m%lastn (lst n)
-  (setq n (m%nonneg-integer-number n))
-  (cond
-    ((= n 1) (m%last1-macro))
-    ((> n 1) (m%lastn-macro))
-    (t       (m%last0-macro))))
+  (defun m%lastn (lst n)
+    (setq n (m%nonneg-integer-number n))
+    (cond
+      ((= n 1) (m%last1-macro))
+      ((> n 1) (m%lastn-macro))
+      (t       (m%last0-macro))))
 
-(defun last (lst . n)
-  (if n
-      (m%lastn lst (car n))
-      (m%last1-macro)))
+  (defun last (lst . n)
+    (if n
+        (m%lastn lst (car n))
+        (m%last1-macro)))
 
-(defmacro last (lst . n)
-  (if n
-      (if (integerp (setq n (car n)))
-          (cond
-            ((= n 1) `(m%last1 ,lst))
-            ((= 0 1) `(m%last0 ,lst))
-            (t `(m%lastn ,lst ,n)))
-          `(m%lastn ,lst ,n))
-      `(m%last1 ,lst)))
-
-(defmacro m%last0-macro)
-(defmacro m%last1-macro)
-(defmacro m%lastn-macro)
+  (defmacro last (lst . n)
+    (if n
+        (if (integerp (setq n (car n)))
+            (cond
+              ((= n 1) `(m%last1 ,lst))
+              ((= 0 1) `(m%last0 ,lst))
+              (t `(m%lastn ,lst ,n)))
+            `(m%lastn ,lst ,n))
+        `(m%last1 ,lst))))
 
 
 ;;; = Function: nconc
@@ -681,8 +679,7 @@
 ;;;     (member 'b '(a b c 1 2 3) (lambda (a b) (eq a b)))
 ;;;         ; => (b c 1 2 3)
 (defun member (item lst . test)
-  (let* ((tst (car test))
-         (pred (if tst tst eql)))
+  (let* ((pred (if test (car test) eql)))
     (let loop ((lst lst))
       (when lst
         (if (pred item (car lst))
@@ -715,60 +712,88 @@
   (cons (cons key datum) alist))
 
 
-(defmacro m%notany-null (lst)
-  (let ((loop (gensym "loop"))
-        (l (gensym "lst")))
-    `(let ,loop ((,l ,lst))
-       (if ,l
-           (and (car ,l) (,loop (cdr ,l)))
-           t))))
+(macrolet ((m%notany-null (lst)
+             (let ((loop (gensym "loop"))
+                   (l (gensym "lst")))
+               `(let ,loop ((,l ,lst))
+                     (if ,l
+                         (when (car ,l) (,loop (cdr ,l)))
+                         t))))
 
+           ;; Helper macros to generate defuns for the various mapXX functions
+           (m%mapx (name acc accn)
+             `(defun ,name (func lst . more-lists)
+                (if more-lists
+                    (let loop ((args (cons lst more-lists)))
+                         (when (m%notany-null args)
+                           (apply func ,(if accn (list accn 'args) 'args))
+                           (loop (unzip-tails args))))
+                    (let loop ((lst lst))
+                         (when lst
+                           (func ,(if acc (list acc 'lst) 'lst))
+                           (loop (cdr lst)))))
+                lst))
 
-;; Helper macros to generate defuns for the various mapXX functions
-(defmacro m%mapx (name acc accn)
-  `(defun ,name (func lst . more-lists)
-     (if more-lists
-         (let loop ((args (cons lst more-lists)))
-           (when (m%notany-null args)
-             (apply func ,(if accn (list accn 'args) 'args))
-             (loop (unzip-tails args))))
-         (let loop ((lst lst))
-           (when lst
-             (func ,(if acc (list acc 'lst) 'lst))
-             (loop (cdr lst)))))
-     lst))
+           (m%mapx-cons (name acc accn)
+             `(defun ,name (func lst . more-lists)
+                (let* ((result (list ())) (append-to result))
+                  (if more-lists
+                      (let loop ((args (cons lst more-lists)))
+                           (when (m%notany-null args)
+                             (setq append-to (cdr (rplacd append-to (list (apply func ,(if accn (list accn 'args) 'args))))))
+                             (loop (unzip-tails args))))
+                      (let loop ((lst lst))
+                           (when lst
+                             (setq append-to (cdr (rplacd append-to (list (func ,(if acc (list acc 'lst) 'lst))))))
+                             (loop (cdr lst)))))
 
-(defmacro m%mapx-cons (name acc accn)
-  `(defun ,name (func lst . more-lists)
-     (let* ((result (list ())) (append-to result))
-       (if more-lists
-           (let loop ((args (cons lst more-lists)))
-            (when (m%notany-null args)
-              (setq append-to (cdr (rplacd append-to (list (apply func ,(if accn (list accn 'args) 'args))))))
-              (loop (unzip-tails args))))
-           (let loop ((lst lst))
-              (when lst
-                (setq append-to (cdr (rplacd append-to (list (func ,(if acc (list acc 'lst) 'lst))))))
-                (loop (cdr lst)))))
+                  (cdr result))))
 
-       (cdr result))))
+           (m%mapx-nconc (name acc accn)
+             `(defun ,name (func lst . more-lists)
+                (labels ((m%last (lst)
+                           ;; returns the last cdr, similar to `last` but errors if the last cdr is a dotted pair
+                           ;;(if (consp (cdr lst))  ;; with this instead of the next line Murmel is somewhat sloppy re: mapcon/ mapcon, see https://gitlab.common-lisp.net/cmucl/cmucl/-/issues/196
+                           (if (cdr lst)
+                               (m%last (cdr lst))
+                               lst)))
 
-(defmacro m%mapx-nconc (name acc accn)
-  `(defun ,name (func lst . more-lists)
-     (let* ((result (list ())) (append-to result))
-       (if more-lists
-           (let loop ((args (cons lst more-lists)))
-             (when (m%notany-null args)
-               (setq append-to (last append-to))
-               (rplacd append-to (apply func ,(if accn (list accn 'args) 'args)))
-               (loop (unzip-tails args))))
-           (let loop ((lst lst))
-             (when lst
-               (setq append-to (last append-to))
-               (rplacd append-to (func ,(if acc (list acc 'lst) 'lst)))
-               (loop (cdr lst)))))
+                  (let* ((result (list ())) (append-to result))
+                    (if more-lists
+                        (let loop ((args (cons lst more-lists)))
+                             (when (m%notany-null args)
+                               (setq append-to (m%last append-to))
+                               (rplacd append-to (apply func ,(if accn (list accn 'args) 'args)))
+                               (loop (unzip-tails args))))
+                        (let loop ((lst lst))
+                             (when lst
+                               (setq append-to (m%last append-to))
+                               (rplacd append-to (func ,(if acc (list acc 'lst) 'lst)))
+                               (loop (cdr lst)))))
 
-       (cdr result))))
+                    (cdr result)))))
+
+           (m%mapx-append (name acc accn)
+             `(defun ,name (func lst . more-lists)
+                (let* ((result (list ())) (append-to result))
+                  (if more-lists
+                      (let loop ((args (cons lst more-lists)))
+                           (when (m%notany-null args)
+                             (let loop ((r (apply func ,(if accn (list accn 'args) 'args))))
+                               #1=(if (consp r)
+                                      (progn
+                                        (setq append-to (cdr (rplacd append-to (list (car r)))))
+                                        (loop (cdr r)))
+                                      (if r (error 'simple-type-error "the value %s is not of type list" r))))
+                             (loop (unzip-tails args))))
+                      (let loop ((lst lst))
+                           (when lst
+                             (let loop ((r (func ,(if acc (list acc 'lst) 'lst))))
+                               #1#)
+                             (loop (cdr lst)))))
+
+                  (cdr result))))
+           )
 
 
 ;;; = Function: mapcar
@@ -824,7 +849,7 @@
 ;;; `function` must accept as many arguments as lists are given,
 ;;; and will applied to subsequent items of the given lists.
 ;;;
-;;; All function application results will be concatenated to a list
+;;; All function application results will be concatenated (as if by nconc) to a list
 ;;; which is the return value of `mapcan`.
 (m%mapx-nconc mapcan car unzip)
 
@@ -837,14 +862,50 @@
 ;;; `function` must accept as many arguments as lists are given,
 ;;; and will applied to subsequent tails of the given lists.
 ;;;
-;;; All function application results will be concatenated to a list
+;;; All function application results will be concatenated (as if by nconc) to a list
 ;;; which is the return value of `mapcon`.
 (m%mapx-nconc mapcon nil nil)
 
-; undef m%mapx and friends
-(defmacro m%mapx)
-(defmacro m%mapx-cons)
-(defmacro m%mapx-nconc)
+
+; Alexandria: conses and lists ****************************************
+;;; = Function: mappend
+;;;     (mappend function list+) -> appended-results
+;;;
+;;; Since: 1.4.7
+;;;
+;;; `function` must accept as many arguments as lists are given,
+;;; and will applied to subsequent items of the given lists.
+;;;
+;;; All function application results will be concatenated to a list
+;;; which is the return value of `mappend`.
+;;; `function` must return a list which will not be mutated by `mappend`.
+;;;
+;;; `mappend` works similar to Alexandria's `mappend` and
+;;; can be thought of as a non-destructive version of `mapcan`,
+;;; i.e. `mappend` combines the results of applying `function`
+;;; by the use of `append` rather than `nconc`.
+(m%mapx-append mappend car unzip)
+
+
+;;; = Function: mappend-tails
+;;;     (mappend-tails function list+) -> appended-results
+;;;
+;;; Since: 1.4.7
+;;;
+;;; `function` must accept as many arguments as lists are given,
+;;; and will applied to subsequent tails of the given lists.
+;;;
+;;; All function application results will be concatenated to a list
+;;; which is the return value of `mappend-tails`.
+;;; `function` must return a list which will not be mutated by `mappend`.
+;;;
+;;; `mappend-tails` can be thought of as a non-destructive version of `mapcon`,
+;;; i.e. `mappend-tails` combines the results of applying `function`
+;;; by the use of `append` rather than `nconc`.
+(m%mapx-append mappend-tails nil nil)
+
+
+) ; (macrolet...
 
 
 ;;; = Macro: multiple-value-list
@@ -1143,8 +1204,8 @@
             splice)
         (when (consp head)              ; there are at least n
           (when (consp (cdr head))    ; conses
-            (setq result (list ()))
-            (setq splice result)
+            (setq result (list ())
+                  splice result)
             (do ((trail lst (cdr trail))
                  (head head (cdr head)))
                 ;; HEAD is n-1 conses ahead of TRAIL;
@@ -1596,17 +1657,29 @@
             #1#))))
 
 
-; Helper macro to generate defmacro's for inplace modification macros.
-(defmacro m%inplace (name noarg arg)
-  `(defmacro ,name (place . delta-form)
-     (if (symbolp place)
-         `(setq ,place ,(if delta-form `(,,@arg ,place ,@delta-form) `(,,@noarg ,place)))
-         (destructuring-bind (vars vals store-vars writer-form reader-form) (get-setf-expansion place)
-           `(let* (,@(mapcar list vars vals)
-                   (,(car store-vars) ,(if delta-form
-                                           `(,,@arg ,reader-form ,@delta-form)
-                                           `(,,@noarg ,reader-form))))
-              ,writer-form)))))
+(macrolet (
+           ;; Helper macro to generate defmacro's for inplace modification macros.
+           (m%inplace (name noarg arg)
+             `(defmacro ,name (place . delta-form)
+               (let ((tmp (gensym)))
+                  (if (symbolp place)
+                      `(setq ,place ,(cond ((null delta-form)
+                                            `(,,@noarg ,place))
+                                           ((atom (car delta-form))
+                                            `(,,@arg ,place ,@delta-form))
+                                           (t
+                                            `(let ((,tmp ,@delta-form))
+                                               (,,@arg ,place ,tmp)))))
+                      (destructuring-bind (vars vals store-vars writer-form reader-form) (get-setf-expansion place)
+                        `(let* (,@(mapcar list vars vals)
+                                ,@(when (consp delta-form) `((,tmp ,@delta-form)))
+                                (,(car store-vars) ,(cond ((null delta-form)
+                                                           `(,,@noarg ,reader-form))
+                                                          ((atom (car delta-form))
+                                                           `(,,@arg ,reader-form ,@delta-form))
+                                                          (t
+                                                           `(,,@arg ,reader-form ,tmp)))))
+                           ,writer-form)))))))
 
 
 ;;; = Macro: incf, decf
@@ -1646,8 +1719,8 @@
 ;;;
 ;;; Without `delta-form` the return type of `*f` will be
 ;;; the type of the number in `place`, otherwise the return type will be float.
-(m%inplace *f (identity) (*))
-(m%inplace /f (/) (/))
+(m%inplace *f ('identity) ('*))
+(m%inplace /f ('/)        ('/))
 
 
 ;;; = Macro: +f, -f
@@ -1668,11 +1741,10 @@
 ;;;
 ;;; Without `delta-form` the return type of `+f` will be
 ;;; the type of the number in `place`, otherwise the return type will be float.
-(m%inplace +f (identity) (+))
-(m%inplace -f (-) (-))
+(m%inplace +f ('identity) ('+))
+(m%inplace -f ('-)        ('-))
 
-; undef m%inplace
-(defmacro m%inplace)
+) ; (macrolet...
 
 
 ;;; = Macro: push
@@ -1686,9 +1758,11 @@
   (if (symbolp place)
       `(setq ,place (cons ,item ,place))
       (destructuring-bind (vars vals store-vars writer-form reader-form) (get-setf-expansion place)
-        `(let* (,@(mapcar list vars vals)
-                (,(car store-vars) (cons ,item ,reader-form)))
-           ,writer-form))))
+        (let ((tmpitem (gensym "item")))
+          `(let* ((,tmpitem ,item) ; eval item before place, see http://www.ai.mit.edu/projects/iiip/doc/CommonLISP/HyperSpec/Body/sec_5-1-1-1-1.html
+                  ,@(mapcar list vars vals)
+                  (,(car store-vars) (cons ,tmpitem ,reader-form)))
+             ,writer-form)))))
 
 
 ;;; = Macro: pushnew
@@ -1704,9 +1778,11 @@
   (if (symbolp place)
       `(setq ,place (adjoin ,item ,place ,@test))
       (destructuring-bind (vars vals store-vars writer-form reader-form) (get-setf-expansion place)
-        `(let* (,@(mapcar list vars vals)
-                (,(car store-vars) (adjoin ,item ,reader-form ,@test)))
-           ,writer-form))))
+        (let ((tmpitem (gensym "item")))
+          `(let* ((,tmpitem ,item) ; eval item before place, see http://www.ai.mit.edu/projects/iiip/doc/CommonLISP/HyperSpec/Body/sec_5-1-1-1-1.html
+                  ,@(mapcar list vars vals)
+                  (,(car store-vars) (adjoin ,tmpitem ,reader-form ,@test)))
+             ,writer-form)))))
 
 
 ;;; = Macro: pop
@@ -1726,7 +1802,7 @@
         (destructuring-bind (vars vals new writer-form reader-form) (get-setf-expansion place)
           `(let* (,@(mapcar list vars vals)
                   (,@new (cdr ,reader-form))
-                    (,result (car ,reader-form)))
+                  (,result (car ,reader-form)))
              ,writer-form
              ,result)))))
 
@@ -2090,8 +2166,8 @@
                     (values value more)
                     (if more-generators
                         (progn
-                          (setq generator (car more-generators))
-                          (setq more-generators (cdr more-generators))
+                          (setq generator (car more-generators)
+                                more-generators (cdr more-generators))
                           (generator))
                         (values nil nil))))
               (values nil nil))))
@@ -2284,17 +2360,43 @@
   (remove-if (lambda (x) (eql x elem)) seq))
 
 
-(defun m%list->sequence (lst result-type)
-  (cond ((null result-type)                  nil)
-        ((eq result-type 'list)              lst)
-        ((eq result-type 'cons)              (or lst (error 'simple-type-error "nil is not a sequence of type cons")))
-        ((eq result-type 'vector)            (list->simple-vector lst))
-        ((eq result-type 'simple-vector)     (list->simple-vector lst))
-        ((eq result-type 'simple-bit-vector) (list->bit-vector lst))
-        ((eq result-type 'bit-vector)        (list->bit-vector lst))
-        ((eq result-type 'string)            (list->string lst))
-        ((eq result-type 'simple-string)     (list->string lst))
-        (t                                   (error "type %s is not implemented" result-type))))
+(labels ((m%list->sequence (lst result-type)
+           (cond ((eq result-type 'null)              (when lst
+                                                        (error 'simple-type-error "cannot create a sequence of type null w/ length > 0"))
+                                                      nil)
+                 ((eq result-type 'list)              lst)
+                 ((eq result-type 'cons)              (unless lst
+                                                        (error 'simple-type-error "cannot create a sequence of type cons w/ length 0"))
+                                                      lst)
+                 ((eq result-type 'vector)            (list->simple-vector lst))
+                 ((eq result-type 'simple-vector)     (list->simple-vector lst))
+                 ((eq result-type 'simple-bit-vector) (list->bit-vector lst))
+                 ((eq result-type 'bit-vector)        (list->bit-vector lst))
+                 ((eq result-type 'string)            (list->string lst))
+                 ((eq result-type 'simple-string)     (list->string lst))
+                 (t                                   (error 'simple-type-error "%s is a bad type specifier for sequences" result-type)))))
+
+
+;;; = Function: concatenate
+;;;     (concatenate result-type sequences*) -> result-sequence
+;;;
+;;; Since 1.4.7
+;;;
+;;; `concatenate` returns a sequence that contains all the individual elements
+;;; of all the sequences in the order that they are supplied.
+;;; The sequence is of type result-type, which must be a subtype of type sequence.
+;;;
+;;; All of the sequences are copied from; the result does not share any structure
+;;; with any of the sequences.
+(defun concatenate (result-type . sequences)
+  (let ((result (list nil))) 
+    (let* loop ((sequences sequences)
+                (append-to result))
+      (when sequences
+        (dogenerator (x (scan (car sequences)))
+          (setq append-to (m%rplacd append-to (list x))))
+        (loop (cdr sequences) append-to)))
+    (m%list->sequence (cdr result) result-type)))
 
 
 ;;; = Function: map
@@ -2334,6 +2436,8 @@
                    (multiple-value-call collect (seq)))))
         (multiple-value-call collect (seq)))))
 
+) ; labels
+
 
 ;;; = Function: map-into
 ;;;     (map-into result-sequence function sequence*) -> result-sequence
@@ -2353,17 +2457,17 @@
     (let (result-cursor set-result has-next-result result-length seq len)
       (cond
         ((consp result)
-         (setq result-cursor result)
-         (setq set-result (lambda (elem)
-                            (rplaca result-cursor elem) (setq result-cursor (cdr result-cursor))))
-         (setq has-next-result (lambda () result-cursor)))
+         (setq result-cursor result
+               set-result (lambda (elem)
+                            (rplaca result-cursor elem) (setq result-cursor (cdr result-cursor)))
+               has-next-result (lambda () result-cursor)))
 
         ((vectorp result)
-         (setq result-cursor 0)
-         (setq set-result (lambda (elem)
-                            (seqset result result-cursor elem) (setq result-cursor (1+ result-cursor))))
-         (setq has-next-result (lambda () (< result-cursor result-length)))
-         (setq result-length (vector-length result)))
+         (setq result-cursor 0
+               set-result (lambda (elem)
+                            (seqset result result-cursor elem) (setq result-cursor (1+ result-cursor)))
+               has-next-result (lambda () (< result-cursor result-length))
+               result-length (vector-length result)))
 
         (t (error 'simple-type-error "map-into: not a sequence: %s" result)))
 
@@ -2543,19 +2647,19 @@
 
 
 ; Helper macro to generate defuns for every and some
-(defmacro m%mapxx (name comb lastelem)
-  `(defun ,name (pred seq . more-sequences)
-     (if more-sequences
-         (setq seq (apply scan-multiple (mapcar m%scan (cons seq more-sequences)))
-               pred (let ((original pred))
-                      (lambda (val) (apply original val))))
-         (setq seq (m%scan seq)))
+(macrolet ((m%mapxx (name comb lastelem)
+             `(defun ,name (pred seq . more-sequences)
+                (if more-sequences
+                    (setq seq (apply scan-multiple (mapcar m%scan (cons seq more-sequences)))
+                          pred (let ((original pred))
+                                 (lambda (val) (apply original val))))
+                    (setq seq (m%scan seq)))
 
-     (labels ((do-step (val more)
-                (if more
-                    (,comb (pred val) (multiple-value-call do-step (seq)))
-                    ,lastelem)))
-       (multiple-value-call do-step (seq)))))
+                (labels ((do-step (val more)
+                           (if more
+                               (,comb (pred val) (multiple-value-call do-step (seq)))
+                               ,lastelem)))
+                  (multiple-value-call do-step (seq))))))
 
 
 ;;; = Function: every
@@ -2583,8 +2687,7 @@
 ;;; or `nil` if no applications yield non-nil.
 (m%mapxx some or nil)
 
-(defmacro m%mapxx)
-(defmacro m%notany-null)
+) ; (macrolet...
 
 
 ;;; = Function: notevery
