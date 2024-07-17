@@ -1,2 +1,4 @@
 *.md text eol=lf
 *.html text eol=lf
+*.lisp text eol=lf
+*.jar binary

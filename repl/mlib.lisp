@@ -40,7 +40,8 @@
 ;;; - places
 ;;;     - [destructuring-bind](#macro-destructuring-bind)
 ;;;     - [get-setf-expansion](#function-get-setf-expansion)
-;;;     - [setf](#macro-setf), [psetf](#macro-psetf), [incf, decf](#macro-incf-decf)
+;;;     - [setf](#macro-setf), [psetf](#macro-psetf), [shiftf](#macro-shiftf), [rotatef](#macro-rotatef)
+;;;     - [incf, decf](#macro-incf-decf)
 ;;;     - [push](#macro-push), [pop](#macro-pop), [pushnew](#macro-pushnew)
 
 ;;; - numbers, characters
@@ -897,7 +898,7 @@
 ;;;
 ;;; All function application results will be concatenated to a list
 ;;; which is the return value of `mappend-tails`.
-;;; `function` must return a list which will not be mutated by `mappend`.
+;;; `function` must return a list which will not be mutated by `mappend-tails`.
 ;;;
 ;;; `mappend-tails` can be thought of as a non-destructive version of `mapcon`,
 ;;; i.e. `mappend-tails` combines the results of applying `function`
@@ -1483,20 +1484,34 @@
                  (hashref ,tmp1 ,tmp2)))
 
               ((eq 'values op)
-               (let* ((vars (mapcar (lambda (x) (gensym)) args)))
-                 `(nil
-                   nil
-                   ,vars
-                   (values ,@(let* loop ((ret (list ()))
-                                         (append-to ret)
-                                         (vals args)
-                                         (vars vars))
-                                (if vals
-                                    (progn
-                                      (rplacd append-to (list (list 'setf (car vals) (car vars))))
-                                      (loop ret (cdr append-to) (cdr vals) (cdr vars)))
-                                    (cdr ret))))
-                   ,place)))
+               (let* ((vars (list ()))    (append-vars vars)
+                      (vals (list ()))    (append-vals vals)
+                      (stores (list ()))  (append-stores stores)
+                      (setter (list ()))  (append-setter setter)
+                      (reader (list ()))  (append-reader reader))
+                 (dolist (arg args)
+                   (destructuring-bind (vars vals store-vars writer-form reader-form) (get-setf-expansion arg)
+                     (when vars
+                       (rplacd append-vars vars)
+                       (setq append-vars (cdr append-vars))
+
+                       (rplacd append-vals vals)
+                       (setq append-vals (cdr append-vals)))
+
+                     (rplacd append-stores store-vars)
+                     (setq append-stores (cdr append-stores))
+
+                     (rplacd append-setter (list writer-form))
+                     (setq append-setter (cdr append-setter))
+
+                     (rplacd append-reader (list reader-form))
+                     (setq append-reader (cdr append-reader))))
+
+                 `(,(cdr vars)
+                   ,(cdr vals)
+                   ,(cdr stores)
+                   (values ,@(cdr setter))
+                   (values ,@(cdr reader)))))
 
               (t (error "get-setf-expansion - only symbols, car..cdddr, nth, elt, seqref, hashref, gethash, svref, bvref, bit, sref char and values are supported for 'place', got %s" place))))))))
 
@@ -1573,7 +1588,13 @@
                       ((eq 'gethash op)
                        `(hashset ,(car (cddar args)) ,(cadar args) ,#3#))
 
-                      ((eq 'values op)
+                      ;; if the assignment target is a values form with only symbols
+                      ((and (eq 'values op)
+                            (let loop ((places #2#))
+                              (if places
+                                (when (symbolp (car places))
+                                  (loop (cdr places)))
+                                t)))
                        (let* ((vars (mapcar (lambda (x) (gensym)) #2#)))
                          `(multiple-value-bind ,vars ,#3#
                             (values ,@(let* loop ((ret (list ()))
@@ -1582,7 +1603,7 @@
                                                   (vars vars))
                                         (if places
                                             (progn
-                                              (rplacd append-to (list (list 'setf (car places) (car vars))))
+                                              (rplacd append-to (list (list 'setq (car places) (car vars))))
                                               (loop ret (cdr append-to) (cdr places) (cdr vars)))
                                             (cdr ret)))))))
 
@@ -1596,7 +1617,7 @@
 
 
 ;;; = Macro: psetf
-;;;     (psetf pair*) -> result
+;;;     (psetf pair*) -> nil
 ;;;
 ;;; Since: 1.4.6
 ;;;
@@ -1605,56 +1626,109 @@
 ;;;
 ;;; If more than one pair is supplied then the assignments of new values to places are done in parallel.
 ;;;
-;;; Similar to CL's `psetf` except: Murmel's `psetf`'s return value is the multiple-values
-;;; returned by the storing form for the last place, or nil if there are no pairs,
-;;; similar to `setf`.
+;;; Similar to CL's `psetf`.
 (defmacro psetf pairs
-  (labels ((%make-bindings (pairs append-to)
-             (if pairs
-                 (if (cdr pairs)
-                     (let ((place (car pairs)) (value-form (cadr pairs)))
-                       (if (and (consp place) (eq 'values (car place)))
-                           (progn
-                             (if (cddr place)
-                                 (rplacd append-to (list (list* place value-form  (mapcar (lambda (x) (gensym)) (cdr place)))))
-                                 (rplacd append-to (list (list (cadr place) value-form (gensym)))))
-                             (%make-bindings (cddr pairs) (cdr append-to)))
-                           (progn
-                             (rplacd append-to (list (list place value-form (gensym))))
-                             (%make-bindings (cddr pairs) (cdr append-to)))))
-                     #1=(error "odd number of arguments to psetf"))))
+  (if (cddr pairs)
+      (let ((body (list ())))
+        (let loop ((pairs pairs) (append-to body))
+          (if pairs
+              (progn
+                (unless (cdr pairs) (error 'program-error "odd number of arguments to psetf"))
+                (let ((place (car pairs))
+                      (values-form (cadr pairs)))
+                  (destructuring-bind (vars vals stores setter reader) (get-setf-expansion place)
+                    (cond ((and vars (cdr stores))
+                           `(let ,(mapcar list vars vals)
+                              #1=(multiple-value-bind ,stores ,values-form
+                                   #2=,(loop (cddr pairs) (cdr (rplacd append-to (list setter)))))))
 
-           (make-bindings (pairs)
-             (let ((head (list ())))
-               (%make-bindings pairs head)
-               (cdr head)))
+                          (vars
+                           `(let (,@(mapcar list vars vals)
+                                  (,(car stores) ,values-form))
+                              #2#))
 
-           (maybe-values (vars)
-             (if (cdr vars)
-                 `(values ,@vars)
-                 (car vars))))
+                          ((cdr stores)
+                           `#1#)
 
-    (if pairs
-        (if (cdr pairs)
-            (if (cddr pairs)
-                (let* ((bindings (make-bindings pairs)))
-                  `(let ,(apply append (mapcar cddr bindings))
-                     ,@(let ((head (list ())))
-                         (let loop ((bindings bindings) (append-to head))
-                           (when bindings
-                             (destructuring-bind (place value-form . vars) (car bindings)
-                               (rplacd append-to (list `(setf ,(maybe-values vars) ,value-form))))
-                             (loop (cdr bindings) (cdr append-to))))
-                         (cdr head))
-                     ,@(let ((head (list ())))
-                         (let loop ((bindings bindings) (append-to head))
-                           (when bindings
-                             (destructuring-bind (place value-form . vars) (car bindings)
-                               (rplacd append-to (list `(setf ,place ,(maybe-values vars)))))
-                             (loop (cdr bindings) (cdr append-to))))
-                         (cdr head))))
-                `(setf ,(car pairs) ,@(cdr pairs)))
-            #1#))))
+                          (t
+                           `(let ((,(car stores) ,values-form))
+                              #2#))))))
+
+              `(progn ,@(cdr body) nil))))
+
+      `(progn (setf ,@pairs) nil)))
+
+
+;;; = Macro: shiftf
+;;;     (shiftf place+ newvalue) -> old-values-1
+;;;
+;;; Since: 1.4.8
+;;;
+;;; `shiftf` modifies the values of each place by storing newvalue into the last place,
+;;; and shifting the values of the second through the last place into the remaining places.
+;;;
+;;; Similar to CL's `shiftf`.
+(defmacro shiftf places-and-value
+  (unless (cdr places-and-value)
+    (error 'program-error "not enough arguments to shiftf"))
+
+  (let* ((body (list ()))
+         (append-to body))
+
+    (destructuring-bind (vars vals stores setter reader) (get-setf-expansion (car places-and-value))
+      (setq append-to (cdr (rplacd append-to (list setter))))
+      (let ((out (mapcar (lambda (x) (gensym "out")) stores)))
+        `(let* ,(mapcar list vars vals)
+           (multiple-value-bind ,out ,reader
+             ,(let loop ((prev-stores stores) (prev-setter setter) (l (cdr places-and-value)) (append-to append-to))
+
+                (if (cdr l)
+
+                    (destructuring-bind (vars vals stores setter reader) (get-setf-expansion (car l))
+                      `(let* ,(mapcar list vars vals)
+                         (multiple-value-bind ,prev-stores ,reader
+                           ,(loop stores setter (cdr l) (cdr (rplacd append-to (list prev-setter)))))))
+
+                    `(multiple-value-bind ,prev-stores ,(car l)
+                       ,@(cdr body)
+                       ,prev-setter
+                       (values ,@out))))))))))
+
+
+;;; = Macro: rotatef
+;;;     (rotatef place*) -> nil
+;;;
+;;; Since: 1.4.8
+;;;
+;;; `rotatef` modifies the values of each place by rotating values from one place into another.
+;;;
+;;; If a place produces more values than there are store variables, the extra values are ignored.
+;;; If a place produces fewer values than there are store variables, the missing values are set to `nil`.
+;;;
+;;; Similar to CL's `rotatef`.
+(defmacro rotatef places
+  (if (cdr places)
+      (let* ((body (list ()))
+             (append-to body))
+
+        (destructuring-bind (vars vals stores setter first-reader) (get-setf-expansion (car places))
+          (let ((out (mapcar (lambda (x) (gensym "out")) stores)))
+            `(let* ,(mapcar list vars vals)
+               ,(let loop ((prev-stores stores) (prev-setter setter) (l (cdr places)) (append-to append-to))
+
+                  (destructuring-bind (vars vals stores setter reader) (get-setf-expansion (car l))
+                    `(let* ,(mapcar list vars vals)
+                       (multiple-value-bind ,prev-stores ,reader
+                         ,(if (cdr l)
+
+                              (loop stores setter (cdr l) (cdr (rplacd append-to (list prev-setter))))
+
+                              `(multiple-value-bind ,stores ,first-reader
+                                 ,@(cdr body)
+                                 ,prev-setter
+                                 ,setter
+                                 nil))))))))))
+      nil))
 
 
 (macrolet (
@@ -1678,7 +1752,8 @@
                                                           ((atom (car delta-form))
                                                            `(,,@arg ,reader-form ,@delta-form))
                                                           (t
-                                                           `(,,@arg ,reader-form ,tmp)))))
+                                                           `(,,@arg ,reader-form ,tmp))))
+                                ,@(cdr store-vars)) ; bind remaining store-vars to nil as per "CLHS 5.1.2.3 VALUES Forms as Places"
                            ,writer-form)))))))
 
 
@@ -1761,7 +1836,8 @@
         (let ((tmpitem (gensym "item")))
           `(let* ((,tmpitem ,item) ; eval item before place, see http://www.ai.mit.edu/projects/iiip/doc/CommonLISP/HyperSpec/Body/sec_5-1-1-1-1.html
                   ,@(mapcar list vars vals)
-                  (,(car store-vars) (cons ,tmpitem ,reader-form)))
+                  (,(car store-vars) (cons ,tmpitem ,reader-form))
+                  ,@(cdr store-vars)) ; bind remaining store-vars to nil as per "CLHS 5.1.2.3 VALUES Forms as Places"
              ,writer-form)))))
 
 
@@ -1781,7 +1857,8 @@
         (let ((tmpitem (gensym "item")))
           `(let* ((,tmpitem ,item) ; eval item before place, see http://www.ai.mit.edu/projects/iiip/doc/CommonLISP/HyperSpec/Body/sec_5-1-1-1-1.html
                   ,@(mapcar list vars vals)
-                  (,(car store-vars) (adjoin ,tmpitem ,reader-form ,@test)))
+                  (,(car store-vars) (adjoin ,tmpitem ,reader-form ,@test))
+                  ,@(cdr store-vars)) ; bind remaining store-vars to nil as per "CLHS 5.1.2.3 VALUES Forms as Places"
              ,writer-form)))))
 
 
@@ -1801,7 +1878,8 @@
            ,result)
         (destructuring-bind (vars vals new writer-form reader-form) (get-setf-expansion place)
           `(let* (,@(mapcar list vars vals)
-                  (,@new (cdr ,reader-form))
+                  (,(car new) (cdr ,reader-form))
+                  ,@(cdr new) ; bind remaining store-vars to nil as per "CLHS 5.1.2.3 VALUES Forms as Places"
                   (,result (car ,reader-form)))
              ,writer-form
              ,result)))))
