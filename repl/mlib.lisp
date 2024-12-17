@@ -66,6 +66,8 @@
 ;;; - I/O
 ;;;     - [write-char](#function-write-char)
 ;;;     - [terpri, prin1, princ, print](#function-terpri-prin1-princ-print), [pprint](#function-pprint)
+;;;     - [format](#function-format), [formatter](#macro-formatter)
+;;;     - [error](#function-error)
 ;;;     - [with-output-to-string](#macro-with-output-to-string)
 
 ;;; - misc
@@ -111,6 +113,8 @@
 ;;;     - [scan](#function-scan), [scan-multiple](#function-scan-multiple), [scan-concat](#function-scan-concat)
 ;;; - strings
 ;;;     - [string-trim](#function-string-trim), [string-subseq](#function-string-subseq), [string-replace](#function-string-replace), [string-split](#function-string-split), [string-join](#function-string-join)
+;;; - hash tables
+;;;     - [frequencies](#function-frequencies)
 
 
 ;;; == Description of functions and macros
@@ -167,13 +171,15 @@
 
 ;;; = Macro: and
 ;;;     (and forms*) -> result
+;;;     (and* forms*) -> boolean
 ;;;
 ;;; Since: 1.1
 ;;;
 ;;; Short-circuiting logical and.
 ;;; Return `t` if no forms were given,
 ;;; otherwise return the values resulting from the evaluation of the last form unless any of the `forms` evaluate to `nil`,
-;;; `nil` otherwise.
+;;; `nil` otherwise,
+;;; or in case of `and*`: `t` or `nil` as appropriate.
 (defmacro and forms
   (if forms
       (if (cdr forms)
@@ -183,14 +189,23 @@
       t))
 
 
+(defmacro and* forms
+  (if forms
+      `(if ,(car forms)
+           (and* ,@(cdr forms)))
+      t))
+
+
 ;;; = Macro: or
 ;;;     (or forms*) -> result
+;;;     (or* forms*) -> boolean
 ;;;
 ;;; Since: 1.1
 ;;;
 ;;; Short-circuiting logical or.
 ;;; Return `nil` unless any of the `forms` evaluate to non-nil,
-;;; the result of the first form returning non-nil otherwise.
+;;; the result of the first form returning non-nil otherwise,
+;;; or in case of `or*`: `t` or `nil` as appropriate.
 (defmacro or forms
   (labels ((m%or (tmp forms)
              (when forms
@@ -203,7 +218,7 @@
     ;; strip off any leading nil
     (let loop ()
       (when forms
-        (when (null (car forms))
+        (unless (car forms)
           (setq forms (cdr forms))
           (loop))))
 
@@ -215,6 +230,22 @@
                    ,temp
                    ,(m%or temp (cdr forms)))))
           (car forms)))))
+
+
+(defmacro or* forms
+    ;; strip off any leading nil
+    (let loop ()
+      (when forms
+        (unless (car forms)
+          (setq forms (cdr forms))
+          (loop))))
+
+    (when forms
+      (if forms
+          `(if ,(car forms)
+               t
+               (or* ,@(cdr forms)))
+          nil)))
 
 
 ;;; = Macro: prog1, prog2
@@ -232,17 +263,17 @@
 
 (defmacro prog2 (first-form second-form . more-forms)
   (if more-forms
-      (let ((ignore (gensym))
-            (result (gensym)))
-        `(let ((,ignore ,first-form)
-               (,result ,second-form))
-           ,@more-forms
-           ,result))
+      (let ((result (gensym)))
+        `(progn
+           ,first-form
+           (let ((,result ,second-form))
+             ,@more-forms
+             ,result)))
       `(progn ,first-form (values ,second-form))))
 
 
 ;;; = Macro: case
-;;;      (case keyform (keys forms*)* (t forms*)?) -> result
+;;;      (case keyform (keys forms*)* [(t forms*)]) -> result
 ;;;
 ;;; Since: 1.1
 ;;;
@@ -293,7 +324,7 @@
 
 
 ;;; = Macro: typecase
-;;;      (typecase keyform (type forms*)* (t forms*)?) -> result
+;;;      (typecase keyform (type forms*)* [(t forms*)]) -> result
 ;;;
 ;;; Since: 1.3
 ;;;
@@ -318,7 +349,7 @@
              (let ((keydesignator (car clause)))
                (if (and keydesignator (symbolp keydesignator))
                    `((typep ,tmp ',keydesignator) ,@(cdr clause))
-                   (error 'simple-error "bad clause in typecase: %s" clause))))
+                   (jerror 'simple-error "typecase - bad clause '%s'" clause))))
 
            (do-clauses (key)
              (let* ((result (list ()))
@@ -339,6 +370,9 @@
 ; conses and lists ****************************************************
 
 (defmacro m%def-macro-fun (name params . body)
+  "Expand into a defmacro as well as a defun.
+   Must only be used when body uses each parameter exactly once in the given order."
+
   `(progn
      (defmacro ,name ,params ,@body)
      (defun ,name ,params (,name ,@params))))
@@ -374,16 +408,16 @@
 ;;; This is the recommended way to test for the end of a proper list. It
 ;;; returns true if `obj` is `nil`, false if `obj` is a `cons`,
 ;;; and a `type-error` for any other type of `object`.
-(m%def-macro-fun endp (obj)
-  `(cond ((consp ,obj) nil)
-         ((null  ,obj) t)
-         (t (error 'simple-type-error "not a list: %s" ,obj))))
+(defun endp (obj)
+  (cond ((consp obj) nil)
+        ((null  obj) t)
+        (t (jerror 'simple-type-error "endp - not a list: '%s'" obj))))
 
 
 (defun m%nonneg-integer-number (n)
   (cond ((integerp n)
          (if (< n 0)
-             #1=(error 'simple-type-error "must be an integer >= 0: %s" n)
+             #1=(jerror 'simple-type-error "must be an integer >= 0: '%s'" n)
              n))
 
         ((numberp n)
@@ -513,7 +547,7 @@
 
 
 ;;; = Function: last
-;;;     (last lst n?) -> tail
+;;;     (last lst [n]) -> tail
 ;;;
 ;;; Since: 1.2
 ;;;
@@ -525,15 +559,15 @@
 ;;; the result is `lst`.
 (macrolet ((m%last0-macro ()
              `(let loop ((rest lst))
-                   (if (consp rest)
-                       (loop (cdr rest))
-                       rest)))
+                (if (consp rest)
+                    (loop (cdr rest))
+                    rest)))
 
            (m%last1-macro ()
              `(let loop ((rest lst))
-                   (if (consp (cdr rest))
-                       (loop (cdr rest))
-                       rest)))
+                (if (consp (cdr rest))
+                    (loop (cdr rest))
+                    rest)))
 
            ;; m%lastn-macro won't work for n <= 0.
            ;; This causes no ill effect because the code below avoids this,
@@ -545,19 +579,19 @@
                       (checked-lst lst)
                       (n n))
                   (let ,scan ()
-                       (setq checked-lst (cdr checked-lst))
-                       (if (atom checked-lst)
+                    (setq checked-lst (cdr checked-lst))
+                    (if (atom checked-lst)
 
-                           returned-lst
+                        returned-lst
 
-                           (if (= (setq n (1- n)) 0)
-                               (let ,pop ()
-                                    (setq returned-lst (cdr returned-lst)
-                                          checked-lst (cdr checked-lst))
-                                    (if (atom checked-lst)
-                                        returned-lst
-                                        (,pop)))
-                 (,scan))))))))
+                        (if (= (setq n (1- n)) 0)
+                            (let ,pop ()
+                              (setq returned-lst (cdr returned-lst)
+                                    checked-lst (cdr checked-lst))
+                              (if (atom checked-lst)
+                                  returned-lst
+                                  (,pop)))
+                            (,scan))))))))
 
   (defun m%last0 (lst)
     (m%last0-macro))
@@ -585,7 +619,9 @@
               ((= 0 1) `(m%last0 ,lst))
               (t `(m%lastn ,lst ,n)))
             `(m%lastn ,lst ,n))
-        `(m%last1 ,lst))))
+        `(m%last1 ,lst)))
+
+) ; macrolet
 
 
 ;;; = Function: nconc
@@ -610,7 +646,7 @@
                      ((consp ele) (rplacd (last splice) ele)  (setq splice ele)  (inner (cdr inner-lists) (cadr inner-lists)))
                      ((null ele) (rplacd (last splice) ())  (inner (cdr inner-lists) (cadr inner-lists)))
                      ((atom ele) (if (cdr inner-lists)
-                                     (error 'simple-type-error "nconc - not a list: %s" ele)
+                                     (jerror 'simple-type-error "nconc - not a list: '%s'" ele)
                                      (rplacd (last splice) ele)))))))
            result)
 
@@ -619,7 +655,7 @@
 
           ((atom result)
            (if (cdr outer-lists)
-               (error 'simple-type-error "nconc - not a list: %s" result)
+               (jerror 'simple-type-error "nconc - not a list: '%s'" result)
                result))))))
 
 
@@ -717,9 +753,9 @@
              (let ((loop (gensym "loop"))
                    (l (gensym "lst")))
                `(let ,loop ((,l ,lst))
-                     (if ,l
-                         (when (car ,l) (,loop (cdr ,l)))
-                         t))))
+                  (if ,l
+                      (when (car ,l) (,loop (cdr ,l)))
+                      t))))
 
            ;; Helper macros to generate defuns for the various mapXX functions
            (m%mapx (name acc accn)
@@ -730,9 +766,9 @@
                            (apply func ,(if accn (list accn 'args) 'args))
                            (loop (unzip-tails args))))
                     (let loop ((lst lst))
-                         (when lst
-                           (func ,(if acc (list acc 'lst) 'lst))
-                           (loop (cdr lst)))))
+                      (when lst
+                        (func ,(if acc (list acc 'lst) 'lst))
+                        (loop (cdr lst)))))
                 lst))
 
            (m%mapx-cons (name acc accn)
@@ -740,13 +776,13 @@
                 (let* ((result (list ())) (append-to result))
                   (if more-lists
                       (let loop ((args (cons lst more-lists)))
-                           (when (m%notany-null args)
-                             (setq append-to (cdr (rplacd append-to (list (apply func ,(if accn (list accn 'args) 'args))))))
-                             (loop (unzip-tails args))))
+                        (when (m%notany-null args)
+                          (setq append-to (cdr (rplacd append-to (list (apply func ,(if accn (list accn 'args) 'args))))))
+                          (loop (unzip-tails args))))
                       (let loop ((lst lst))
-                           (when lst
-                             (setq append-to (cdr (rplacd append-to (list (func ,(if acc (list acc 'lst) 'lst))))))
-                             (loop (cdr lst)))))
+                        (when lst
+                          (setq append-to (cdr (rplacd append-to (list (func ,(if acc (list acc 'lst) 'lst))))))
+                          (loop (cdr lst)))))
 
                   (cdr result))))
 
@@ -762,15 +798,15 @@
                   (let* ((result (list ())) (append-to result))
                     (if more-lists
                         (let loop ((args (cons lst more-lists)))
-                             (when (m%notany-null args)
-                               (setq append-to (m%last append-to))
-                               (rplacd append-to (apply func ,(if accn (list accn 'args) 'args)))
-                               (loop (unzip-tails args))))
+                          (when (m%notany-null args)
+                            (setq append-to (m%last append-to))
+                            (rplacd append-to (apply func ,(if accn (list accn 'args) 'args)))
+                            (loop (unzip-tails args))))
                         (let loop ((lst lst))
-                             (when lst
-                               (setq append-to (m%last append-to))
-                               (rplacd append-to (func ,(if acc (list acc 'lst) 'lst)))
-                               (loop (cdr lst)))))
+                          (when lst
+                            (setq append-to (m%last append-to))
+                            (rplacd append-to (func ,(if acc (list acc 'lst) 'lst)))
+                            (loop (cdr lst)))))
 
                     (cdr result)))))
 
@@ -779,22 +815,21 @@
                 (let* ((result (list ())) (append-to result))
                   (if more-lists
                       (let loop ((args (cons lst more-lists)))
-                           (when (m%notany-null args)
-                             (let loop ((r (apply func ,(if accn (list accn 'args) 'args))))
-                               #1=(if (consp r)
-                                      (progn
-                                        (setq append-to (cdr (rplacd append-to (list (car r)))))
-                                        (loop (cdr r)))
-                                      (if r (error 'simple-type-error "the value %s is not of type list" r))))
-                             (loop (unzip-tails args))))
+                        (when (m%notany-null args)
+                          (let loop ((r (apply func ,(if accn (list accn 'args) 'args))))
+                            #1=(if (consp r)
+                                   (progn
+                                     (setq append-to (cdr (rplacd append-to (list (car r)))))
+                                     (loop (cdr r)))
+                                   (if r (jerror 'simple-type-error "%s - not a list: '%s'" ',name r))))
+                          (loop (unzip-tails args))))
                       (let loop ((lst lst))
-                           (when lst
-                             (let loop ((r (func ,(if acc (list acc 'lst) 'lst))))
+                        (when lst
+                          (let loop ((r (func ,(if acc (list acc 'lst) 'lst))))
                                #1#)
-                             (loop (cdr lst)))))
+                          (loop (cdr lst)))))
 
-                  (cdr result))))
-           )
+                  (cdr result)))))
 
 
 ;;; = Function: mapcar
@@ -1067,7 +1102,7 @@
                     ((stringp ,vec) sref)
                     ((bit-vector-p ,vec) bvref)
                     ((vectorp ,vec) seqref)
-                    (t (error 'simple-type-error "dovector - not a vector: %s" ,vec))))
+                    (t (jerror 'simple-type-error "dovector - not a vector: '%s'" ,vec))))
             (,limit (vector-length ,vec))
             (,idx 0)
             ,var)
@@ -1107,7 +1142,7 @@
                (progn
                  ,@body
                  (,loop (cddr ,lst) (caddr ,lst) (car (cdddr ,lst))))
-               (error "doplist - odd number of elements in plist"))
+               (jerror "doplist - odd number of elements in plist"))
            (progn ,@result)))))
 
 
@@ -1185,7 +1220,7 @@
 
 
 ;;; = Function: butlast
-;;;     (butlast lst n?) -> result-list
+;;;     (butlast lst [n]) -> result-list
 ;;;
 ;;; Since: 1.4.5
 ;;;
@@ -1218,7 +1253,7 @@
 
 
 ;;; = Function: nbutlast
-;;;     (nbutlast lst n?) -> result-list
+;;;     (nbutlast lst [n]) -> result-list
 ;;;
 ;;; Since: 1.4.5
 ;;;
@@ -1429,6 +1464,7 @@
   (let ((read-var (gensym "read-var"))
         (tmp1 (gensym "tmp1"))
         (tmp2 (gensym "tmp2"))
+        (tmp3 (gensym "tmp3"))
         (store-var (gensym "store-var")))
     (if (symbolp place) `(nil nil (,read-var) (setq ,place ,read-var) ,place)
       (let ((op (car place))
@@ -1452,29 +1488,29 @@
               ((eq 'nth op)    `((,read-var) ((nthcdr ,@args)) #0#             #1#                                #11#               ))
 
               ((eq 'svref op)                        (setf-helper args tmp1 tmp2 store-var 'svref 'svset))
-              ((or (eq 'bvref op) (eq 'bit op))      (setf-helper args tmp1 tmp2 store-var 'bvref 'bvset))
-              ((or (eq 'sref op) (eq 'char op))      (setf-helper args tmp1 tmp2 store-var 'sref 'sset))
+              ((or* (eq 'bvref op) (eq 'bit op))     (setf-helper args tmp1 tmp2 store-var 'bvref 'bvset))
+              ((or* (eq 'sref op) (eq 'char op))     (setf-helper args tmp1 tmp2 store-var 'sref 'sset))
 
-              ((or (eq 'seqref op) (eq 'elt op))     (setf-helper args tmp1 tmp2 store-var 'seqref 'seqset))
+              ((or* (eq 'seqref op) (eq 'elt op))    (setf-helper args tmp1 tmp2 store-var 'seqref 'seqset))
 
               ;; hashref with default value: setf (hashref h k def) - eval and ignore default value form
               ((and (eq 'hashref op) (cddr args))
-               `((,tmp1 ,tmp2)
+               `((,tmp1 ,tmp2 ,tmp3)
                  (,(car args) ,(cadr args) ,(caddr args))
                  (,store-var)
                  (hashset ,tmp1 ,tmp2 ,store-var)
-                 (hashref ,tmp1 ,tmp2)))
+                 (hashref ,tmp1 ,tmp2 ,tmp3)))
 
               ;; hashref w/o default value
               ((eq 'hashref op)                      (setf-helper args tmp1 tmp2 store-var 'hashref 'hashset))
 
               ;; gethash with default value: setf (gethash k hash def) - eval and ignore default value form
               ((and (eq 'gethash op) (cddr args))
-               `((,tmp1 ,tmp2)
+               `((,tmp1 ,tmp2 ,tmp3)
                  (,(cadr args) ,(car args) ,(caddr args))
                  (,store-var)
                  (hashset ,tmp1 ,tmp2 ,store-var)
-                 (hashref ,tmp1 ,tmp2)))
+                 (hashref ,tmp1 ,tmp2 ,tmp3)))
 
               ((eq 'gethash op)
                `((,tmp1 ,tmp2)
@@ -1513,7 +1549,7 @@
                    (values ,@(cdr setter))
                    (values ,@(cdr reader)))))
 
-              (t (error "get-setf-expansion - only symbols, car..cdddr, nth, elt, seqref, hashref, gethash, svref, bvref, bit, sref char and values are supported for 'place', got %s" place))))))))
+              (t (jerror "get-setf-expansion - only symbols, car..cdddr, nth, elt, seqref, hashref, gethash, svref, bvref, bit, sref char and values are supported for 'place', got %s" place))))))))
 
 
 ;;; = Macro: setf
@@ -1543,34 +1579,34 @@
                           (cons `(setf ,(car args) ,(cadr args))
                                 (if (cddr args)
                                     (loop (cddr args))))
-                          #1=(error "odd number of arguments to setf"))))
+                          #1=(jerror "setf - odd number of arguments"))))
 
               (if (symbolp (car args))
                   `(setq   ,(car args)  ,@(cdr args))
 
                   (let ((op (caar args)))
                     (cond
-                      ((eq   'car op) `(m%rplaca         ,@#2=(cdar args)  ,#3=(cadr args)))
-                      ((eq  'caar op) `(m%rplaca ( car   ,@#2#)  ,#3#))
-                      ((eq  'cadr op) `(m%rplaca ( cdr   ,@#2#)  ,#3#))
-                      ((eq 'caaar op) `(m%rplaca (caar   ,@#2#)  ,#3#))
-                      ((eq 'caadr op) `(m%rplaca (cadr   ,@#2#)  ,#3#))
-                      ((eq 'cadar op) `(m%rplaca (cdar   ,@#2#)  ,#3#))
-                      ((eq 'caddr op) `(m%rplaca (cddr   ,@#2#)  ,#3#))
-                      ((eq   'nth op) `(m%rplaca (nthcdr ,@#2#)  ,#3#))
+                      ((eq   'car op) `(m%rplaca          ,@#2=(cdar args)  ,#3=(cadr args)))
+                      ((eq  'caar op) `(m%rplaca ( car    ,@#2#)  ,#3#))
+                      ((eq  'cadr op) `(m%rplaca ( cdr    ,@#2#)  ,#3#))
+                      ((eq 'caaar op) `(m%rplaca (caar    ,@#2#)  ,#3#))
+                      ((eq 'caadr op) `(m%rplaca (cadr    ,@#2#)  ,#3#))
+                      ((eq 'cadar op) `(m%rplaca (cdar    ,@#2#)  ,#3#))
+                      ((eq 'caddr op) `(m%rplaca (cddr    ,@#2#)  ,#3#))
+                      ((eq   'nth op) `(m%rplaca (nthcdr  ,@#2#)  ,#3#))
 
-                      ((eq   'cdr op) `(m%rplacd         ,@#2#   ,#3#))
-                      ((eq  'cdar op) `(m%rplacd ( car   ,@#2#)  ,#3#))
-                      ((eq  'cddr op) `(m%rplacd ( cdr   ,@#2#)  ,#3#))
-                      ((eq 'cdaar op) `(m%rplacd (caar   ,@#2#)  ,#3#))
-                      ((eq 'cdadr op) `(m%rplacd (cadr   ,@#2#)  ,#3#))
-                      ((eq 'cddar op) `(m%rplacd (cdar   ,@#2#)  ,#3#))
-                      ((eq 'cdddr op) `(m%rplacd (cddr   ,@#2#)  ,#3#))
+                      ((eq   'cdr op) `(m%rplacd          ,@#2#   ,#3#))
+                      ((eq  'cdar op) `(m%rplacd ( car    ,@#2#)  ,#3#))
+                      ((eq  'cddr op) `(m%rplacd ( cdr    ,@#2#)  ,#3#))
+                      ((eq 'cdaar op) `(m%rplacd (caar    ,@#2#)  ,#3#))
+                      ((eq 'cdadr op) `(m%rplacd (cadr    ,@#2#)  ,#3#))
+                      ((eq 'cddar op) `(m%rplacd (cdar    ,@#2#)  ,#3#))
+                      ((eq 'cdddr op) `(m%rplacd (cddr    ,@#2#)  ,#3#))
 
-                      ((eq 'svref op)                    `(svset  ,@#2# ,#3#))
-                      ((or (eq 'bvref op) (eq 'bit op))  `(bvset  ,@#2# ,#3#))
-                      ((or (eq 'sref op) (eq 'char op))  `(sset   ,@#2# ,#3#))
-                      ((or (eq 'seqref op) (eq 'elt op)) `(seqset ,@#2# ,#3#))
+                      ((eq 'svref op)                     `(svset  ,@#2# ,#3#))
+                      ((or* (eq 'bvref op) (eq 'bit op))  `(bvset  ,@#2# ,#3#))
+                      ((or* (eq 'sref op) (eq 'char op))  `(sset   ,@#2# ,#3#))
+                      ((or* (eq 'seqref op) (eq 'elt op)) `(seqset ,@#2# ,#3#))
 
                       ;; hashref with default value: setf (hashref h k def) - eval and ignore default value form
                       ((and (eq 'hashref op) (cdr (cddar args)))
@@ -1633,7 +1669,7 @@
         (let loop ((pairs pairs) (append-to body))
           (if pairs
               (progn
-                (unless (cdr pairs) (error 'program-error "odd number of arguments to psetf"))
+                (unless (cdr pairs) (jerror 'program-error "psetf - odd number of arguments"))
                 (let ((place (car pairs))
                       (values-form (cadr pairs)))
                   (destructuring-bind (vars vals stores setter reader) (get-setf-expansion place)
@@ -1660,7 +1696,7 @@
 
 
 ;;; = Macro: shiftf
-;;;     (shiftf place+ newvalue) -> old-values-1
+;;;     (shiftf place+ newvalues) -> old-values-1
 ;;;
 ;;; Since: 1.4.8
 ;;;
@@ -1670,7 +1706,7 @@
 ;;; Similar to CL's `shiftf`.
 (defmacro shiftf places-and-value
   (unless (cdr places-and-value)
-    (error 'program-error "not enough arguments to shiftf"))
+    (jerror 'program-error "shiftf - not enough arguments"))
 
   (let* ((body (list ()))
          (append-to body))
@@ -1731,8 +1767,7 @@
       nil))
 
 
-(macrolet (
-           ;; Helper macro to generate defmacro's for inplace modification macros.
+(macrolet (;; Helper macro to generate defmacro's for inplace modification macros.
            (m%inplace (name noarg arg)
              `(defmacro ,name (place . delta-form)
                (let ((tmp (gensym)))
@@ -1758,8 +1793,8 @@
 
 
 ;;; = Macro: incf, decf
-;;;     (incf place delta-form*) -> new-value
-;;;     (decf place delta-form*) -> new-value
+;;;     (incf place [delta-form]) -> new-value
+;;;     (decf place [delta-form]) -> new-value
 ;;;
 ;;; Since: 1.1
 ;;;
@@ -1777,8 +1812,8 @@
 
 
 ;;; = Macro: *f, /f
-;;;     (*f place delta-form*) -> new-value
-;;;     (/f place delta-form*) -> new-value
+;;;     (*f place [delta-form]) -> new-value
+;;;     (/f place [delta-form]) -> new-value
 ;;;
 ;;; Since: 1.1
 ;;;
@@ -1799,16 +1834,16 @@
 
 
 ;;; = Macro: +f, -f
-;;;     (+f place delta-form*) -> new-value
-;;;     (-f place delta-form*) -> new-value
+;;;     (+f place [delta-form]) -> new-value
+;;;     (-f place [delta-form]) -> new-value
 ;;;
 ;;; Since: 1.1
 ;;;
 ;;; `+f` and `+f` are used for adding and subtracting
 ;;; to/ from the value of `place`, respectively.
 ;;;
-;;; The delta is added (in the case of `*f`) to
-;;; or subtracted (in the case of `/f`) from the number in `place`
+;;; The delta is added (in the case of `+f`) to
+;;; or subtracted (in the case of `-f`) from the number in `place`
 ;;; and the result is stored in `place`.
 ;;;
 ;;; Without `delta-form` `-f` will return the negation of the number in `place`,
@@ -1941,7 +1976,7 @@
 (defun evenp (n)
   (if (integerp n)
       (= 0.0 (mod n 2))
-      (error 'simple-type-error "not an integer: %s" n)))
+      (jerror 'simple-type-error "evenp - not an integer: '%s'" n)))
 
 
 ;;; = Function: oddp
@@ -1953,7 +1988,7 @@
 (defun oddp (n)
   (if (integerp n)
       (= 1.0 (mod n 2))
-      (error 'simple-type-error "not an integer: %s" n)))
+      (jerror 'simple-type-error "oddp - not an integer: '%s'" n)))
 
 
 ;;; = Function: char=
@@ -1994,24 +2029,6 @@
   `(bvref ,bv ,n))
 
 
-; ;;; = Function: equal
-; ;;;     (equal a b) -> boolean
-; ;;;
-; ;;; Since: 1.1
-; ;;;
-; ;;; Return `t` if any of the following is true:
-; ;;;
-; ;;; - `a` and `b` are `eql`
-; ;;; - `a` and `b` are strings that have the same text value
-; ;;; - `a` and `b` are bitvectors whose elements are eql
-; ;;; - `a` and `b` are conses whose car and cdr are `equal` respectively
-; (defun equal (a b)
-;   (or (eql a b)
-;       (and (stringp a) (stringp b) (string= a b))
-;       (and (bit-vector-p a) (bit-vector-p b) (bv= a b))
-;       (and (consp a)   (consp b)   (equal (car a) (car b)) (equal (cdr a) (cdr b)))))
-
-
 ;;; = Function: parse
 ;;;     (parse result-type str [eof-obj [start [end]]]) -> result
 ;;;
@@ -2023,7 +2040,7 @@
   (multiple-value-bind (obj pos) (apply read-from-string (cdr args))
     (if (typep obj (car args))
         (values obj pos)
-        (error 'parse-error "expected an object of type %s, got %s" (car args) obj))))
+        (jerror 'parse-error "parse - expected an object of type '%s', got '%s'" (car args) obj))))
 
 
 ;;; = Function: parse-integer
@@ -2147,7 +2164,7 @@
         ((null arg)
          (lambda () (values nil nil)))
 
-        (t (error "scan: cannot create a generator function from given arguments"))))
+        (t (jerror "scan - cannot create a generator function from given arguments"))))
 
 
 (defun scan (arg . more-args)
@@ -2194,7 +2211,7 @@
 ;;; Once the first generator indicates "at end" for the first time no more generators will be called.
 (defun scan-multiple (generator . more-generators)
   (unless (functionp generator)
-    (error 'simple-type-error "not a generator"))
+    (jerror 'simple-type-error "scan-multiple - not a generator"))
 
   (if more-generators
 
@@ -2233,7 +2250,7 @@
 ;;; A single generator would be returned unchanged.
 (defun scan-concat (generator . more-generators)
   (unless (functionp generator)
-    (error 'simple-type-error "not a generator"))
+    (jerror 'simple-type-error "scan-concat - not a generator"))
 
   (if more-generators
       (let ((more-generators more-generators))
@@ -2303,7 +2320,7 @@
     ((null seq)    nil)
     ((consp seq)   (copy-list seq))
     ((vectorp seq) (vector-copy seq))
-    (t             (error 'simple-type-error "copy-seq - %s is not a sequence" seq))))
+    (t             (jerror 'simple-type-error "copy-seq - not a sequence: '%s'" seq))))
 
 
 ;;; = Function: length
@@ -2317,7 +2334,7 @@
     ((null seq) 0)
     ((listp seq) (list-length seq))
     ((vectorp seq) (vector-length seq))
-    (t (error 'simple-type-error "length - %s is not a sequence" seq))))
+    (t (jerror 'simple-type-error "length - not a sequence: '%s'" seq))))
 
 
 ;;; = Function: reverse
@@ -2348,7 +2365,7 @@
       ((simple-vector-p seq)    (reverse/vector seq (make-array (vector-length seq)) svref svset))
       ((bit-vector-p seq)       (reverse/vector seq (make-array (vector-length seq) 'bit) bvref bvset))
       ((vectorp seq)            (reverse/vector seq (make-array (vector-length seq)) seqref seqset))
-      (t                        (error 'simple-type-error "reverse - %s is not a sequence" seq)))))
+      (t                        (jerror 'simple-type-error "reverse - not a sequence: '%s'" seq)))))
 
 
 ;;; = Function: nreverse
@@ -2387,7 +2404,7 @@
       ((simple-vector-p seq)    (nreverse/vector seq svref svset))
       ((bit-vector-p seq)       (nreverse/vector seq bvref bvset))
       ((vectorp seq)            (nreverse/vector seq seqref seqset))
-      (t                        (error 'simple-type-error "nreverse - %s is not a sequence" seq)))))
+      (t                        (jerror 'simple-type-error "nreverse - not a sequence: '%s'" seq)))))
 
 
 ;;; = Function: remove-if
@@ -2424,7 +2441,7 @@
       ((simple-vector-p seq)     (list->simple-vector     (remove-if/vector seq)))
       ((simple-bit-vector-p seq) (list->bit-vector        (remove-if/vector seq)))
       ((vectorp seq)             (list->simple-vector     (remove-if/vector seq)))
-      (t                         (error 'simple-type-error "remove-if - %s is not a sequence" seq)))))
+      (t                         (jerror 'simple-type-error "remove-if - not a sequence: '%s'" seq)))))
 
 
 ;;; = Function: remove
@@ -2439,20 +2456,29 @@
 
 
 (labels ((m%list->sequence (lst result-type)
-           (cond ((eq result-type 'null)              (when lst
-                                                        (error 'simple-type-error "cannot create a sequence of type null w/ length > 0"))
-                                                      nil)
-                 ((eq result-type 'list)              lst)
-                 ((eq result-type 'cons)              (unless lst
-                                                        (error 'simple-type-error "cannot create a sequence of type cons w/ length 0"))
-                                                      lst)
-                 ((eq result-type 'vector)            (list->simple-vector lst))
-                 ((eq result-type 'simple-vector)     (list->simple-vector lst))
-                 ((eq result-type 'simple-bit-vector) (list->bit-vector lst))
-                 ((eq result-type 'bit-vector)        (list->bit-vector lst))
-                 ((eq result-type 'string)            (list->string lst))
-                 ((eq result-type 'simple-string)     (list->string lst))
-                 (t                                   (error 'simple-type-error "%s is a bad type specifier for sequences" result-type)))))
+           (cond ((eq result-type 'null)
+                  (when lst
+                    (jerror 'simple-type-error "cannot create a sequence of type null w/ length > 0")))
+
+                 ((eq result-type 'list)
+                  lst)
+
+                 ((eq result-type 'cons)
+                  (unless lst
+                    (jerror 'simple-type-error "cannot create a sequence of type cons w/ length 0"))
+                  lst)
+
+                 ((or* (eq result-type 'vector) (eq result-type 'simple-vector))
+                  (list->simple-vector lst))
+
+                 ((or* (eq result-type 'simple-bit-vector) (eq result-type 'bit-vector))
+                  (list->bit-vector lst))
+
+                 ((or* (eq result-type 'string) (eq result-type 'simple-string))
+                  (list->string lst))
+
+                 (t
+                  (jerror 'simple-type-error "%s is a bad type specifier for sequences" result-type)))))
 
 
 ;;; = Function: concatenate
@@ -2467,7 +2493,7 @@
 ;;; All of the sequences are copied from; the result does not share any structure
 ;;; with any of the sequences.
 (defun concatenate (result-type . sequences)
-  (let ((result (list nil))) 
+  (let ((result (list nil)))
     (let* loop ((sequences sequences)
                 (append-to result))
       (when sequences
@@ -2547,7 +2573,7 @@
                has-next-result (lambda () (< result-cursor result-length))
                result-length (vector-length result)))
 
-        (t (error 'simple-type-error "map-into: not a sequence: %s" result)))
+        (t (jerror 'simple-type-error "map-into - not a sequence: '%s'" result)))
 
       (if (cdr sequences)
           ;; 2 or more sequences given
@@ -2575,7 +2601,7 @@
                       (when (and (has-next-result) (< i len))
                         (set-result (func (seqref seq i)))
                         (loop (1+ i)))))
-                (t (error 'simple-type-error "map-into: not a sequence: %s" seq)))
+                (t (jerror 'simple-type-error "map-into: not a sequence: '%s'" seq)))
 
               ;; 0 sequences given
               (let loop ()
@@ -2645,7 +2671,7 @@
             ((simple-vector-p seq)     (reduce/vector seq svref))
             ((bit-vector-p seq)        (reduce/vector seq bvref))
             ((vectorp seq)             (reduce/vector seq seqref))
-            (t (error 'simple-type-error "reduce - %s is not a sequence" seq))))))
+            (t (jerror 'simple-type-error "reduce - not a sequence: '%s'" seq))))))
 
 
 ; hash tables *********************************************************
@@ -2654,11 +2680,6 @@
 ;;;     (gethash key hash [default]) -> object, was-present-p
 ;;;
 ;;; Since: 1.4
-(defmacro gethash (key hash . default)
-  (if default
-      `(hashref ,hash ,key ,@default)
-      `(hashref ,hash ,key)))
-
 (defun gethash (key hash . default)
   (if default
       (hashref hash key (car default))
@@ -2669,11 +2690,8 @@
 ;;;     (remhash key hash) -> was-present-p
 ;;;
 ;;; Since: 1.4
-(defmacro remhash (key hash)
-  `(hash-table-remove ,hash ,key))
-
 (defun remhash (key hash)
-  (remhash key hash))
+  (hash-table-remove hash key))
 
 
 ;;; = Function: maphash
@@ -2686,6 +2704,38 @@
 (defun maphash (function hash)
   (dogenerator (pair (scan-hash-table hash))
     (function (car pair) (cdr pair))))
+
+
+
+;;; = Function: frequencies
+;;;     (frequencies sequence-or-generator [test]) -> hash-table
+;;;
+;;; Since: 1.5
+;;;
+;;; Count the number of times each value occurs in `sequence-or-generator`
+;;; according to the test function `test` which defaults to `eql`.
+;;;
+;;; Sample usage:
+;;;
+;;;     (frequencies ()) ; ==> nil
+;;;     (frequencies #(1 2 3 1 2 1)) ; ==> #H(eql 1 3 2 2 3 1)
+(defun frequencies (seq . test)
+  (let ((counts (make-hash-table (car test))))
+    (cond ((null seq) ())
+
+          ((listp seq)
+           (dolist (x seq counts)
+             (incf (hashref counts x 0))))
+
+          ((vectorp seq)
+           (dovector (x seq counts)
+             (incf (hashref counts x 0))))
+
+          ((functionp seq)
+           (dogenerator (x seq counts)
+             (incf (hashref counts x 0))))
+
+          (t (jerror 'simple-type-error "frequencies - not a sequence or generator: '%s'" seq)))))
 
 
 ; higher order ********************************************************
@@ -2804,7 +2854,7 @@
 (defun write-char (c . dest)
   (if (characterp c)
       (write c nil (car dest))
-      (error 'simple-type-error "write-char - %s is not a character" c)))
+      (jerror 'simple-type-error "write-char - not a character: '%s'" c)))
 
 
 ;;; = Function: terpri, prin1, princ, print
@@ -2847,7 +2897,7 @@
 ;;; CL's optional `string-form` and `element-type` are not supported,
 ;;; therefore the return value of `with-output-to-string` always is the string.
 (defmacro with-output-to-string (s . body)
-  `(let ((,@s (make-array 0 'character t)))
+  `(let ((,@s (make-string-writer)))
      ,@body
      ,@s))
 
@@ -2948,7 +2998,7 @@
          (tend-run (get-internal-run-time))
          (secs-real (/ (- tend-real tstart-real) internal-time-units-per-second))
          (secs-run  (/ (- tend-run  tstart-run) internal-time-units-per-second)))
-    (format t "Evaluation took:%n  %g seconds of real time%n  %g seconds of total run time%n" secs-real secs-run)
+    (jformat t "Evaluation took:%n  %g seconds of real time%n  %g seconds of total run time%n" secs-real secs-run)
     result))
 
 
@@ -3109,8 +3159,8 @@
 ; logic, program structure ********************************************
 
 (defun m%symbol-or-lambda (x)
-  (or (symbolp x)
-      (and (consp x) (eq 'lambda (car x)))))
+  (or* (symbolp x)
+       (and (consp x) (eq 'lambda (car x)))))
 
 ;;; = Macro: ->
 ;;;     (-> forms*) -> result
@@ -3409,5 +3459,813 @@
       (collect v))))
 
 
+; format **************************************************************
+
+;;; = Function: format
+;;;     (format destination control-string args*) -> result
+;;;
+;;; Since: 1.5
+;;;
+;;; A simplified subset of Common Lisp's function `format`.
+;;;
+;;; Note that this simplified `format` does not use or set CL's printer variables
+;;; such as `*print-base*`, `*print-circle*`, ... .
+;;;
+;;; Only the format characters `C, %, &, |, ~, *, B ,D, O, R, X, E, F, G, A, S, W, T` and Tilde-Newline are supported.
+;;;
+;;; `C` supports the modifier `@` for printing `#\`-style escaping.
+;;;
+;;; `B, D, O, R, X` support `mincol, padchar, commachar` and `comma-interval`,
+;;; the modifier `@` for always printing the sign and the modifier `:` for grouping digits.
+;;;
+;;; `R` does not support printing english numbers (giving the base, `@` or `:@` is required).
+;;;
+;;; `E, F, G`: CL's full `format` is `~w,d,k,overflowchar,padcharF`, this subset only supports `~w,dF`
+;;; and the modifier `@` for always printing the sign.
+;;;
+;;; `A` and `S` support `~mincol,colinc,minpad,padcharA` for padding, `:`, and the modifier `@` for left-padding.
+;;;
+;;; `T` supports `@` for relative tabbing but ignores the modifier colon (`:`).
+
+(macrolet ((require-argument ()
+             `(if arguments
+                  (car arguments)
+                  (jerror 'simple-error "format - not enough arguments")))
+
+           (prefix-param (value-form)
+             `(if (eql #\v (car params))
+                  (prog1
+                      (require-argument)
+                    (setq arguments (cdr arguments)))
+                  ,value-form))
+
+           (prefix-param-with-default (default)
+             `(cond ((eql #\v (car params))
+                     (prog1
+                         (require-argument)
+                       (setq arguments (cdr arguments))))
+                    ((car params))
+                    (t
+                     ,default)))
+
+           (prefix-char-with-default (default)
+             `(m%char-for-format (prefix-param-with-default ,default)))
+
+           (prefix-int-with-default (default)
+             `(m%nonneg-integer-for-format (prefix-param-with-default ,default))))
+
+(defun m%nonneg-integer-for-format (arg)
+  "check that arg is a non-negative integer number and return it truncated to an integer"
+  (if (and (numberp arg)
+           (= arg (truncate arg))
+           (>= arg 0))
+      (truncate arg)
+      (jerror "format - not an integer >= 0: '%s'" arg)))
+
+(defun m%char-for-format (arg)
+  (if (characterp arg)
+      arg
+      (jerror "format - not a character: '%s'" arg)))
+
+
+
+(labels ((append-reversed-num (rev arg base)
+           (let loop ((n (if (> arg 0) (- arg) arg))) ; normalize integers to negative numbers because e.g. (abs most-negative-fixnum) would not fit in a fixnum
+             (when (< n 0)
+               (vector-add rev (sref "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" (- (rem n base))))
+               (loop (truncate n base))))))
+
+
+
+;; semi-private: used by the function generated by 'format-function' and the expansion of 'formatter'
+(defun m%print-integer (arguments output-stream base colonp atp params)
+  (let* ((mincol (prefix-param (car params)))
+         (params (cdr params))
+         (padchar (prefix-char-with-default #\ ))
+         (params (cdr params))
+         (commachar (prefix-char-with-default #\,))
+         (params (cdr params))
+         (comma-interval (prefix-int-with-default 3))
+         (arg (car arguments))
+         (rev (make-array 0 'character t)))
+
+    (cond ((integerp arg)
+           (if colonp
+               ;; grouping: separate 'comma-interval' digits with 'commachar'
+               (labels ((loop (n pos)
+                              (when (< n 0)
+                                (when (= pos comma-interval)
+                                  (vector-add rev commachar)
+                                  (setq pos 0))
+                                (vector-add rev (sref "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" (- (rem n base))))
+                                (loop (truncate n base) (1+ pos)))))
+                 (loop (if (> arg 0) (- arg) arg) 0))
+
+               ;; no grouping
+               (append-reversed-num rev arg base))
+
+           ;; print sign and number
+           (if (< arg 0)
+               (vector-add rev #\-)
+               (when atp
+                 (vector-add rev #\+)))
+
+           ;; padding
+           (when mincol
+             (dotimes (i (- mincol (slength rev)))
+               (vector-add rev padchar)))
+
+           (write (nreverse rev) nil output-stream))
+
+          (t (write (car arguments) nil output-stream))))
+
+  (cdr arguments))
+
+
+;; semi-private: used by the expansion of 'formatter'
+(defun m%print-simple-integer (arguments output-stream base)
+  (if (and (/= base 10) (integerp (car arguments)))
+      (let ((arg (car arguments))
+            (rev (make-array 0 'character t)))
+
+        (append-reversed-num rev arg base)
+
+        ;; print sign and number
+        (when (< arg 0)
+          (vector-add rev #\-))
+        (write (nreverse rev) nil output-stream))
+
+      (write (car arguments) nil output-stream))
+  (cdr arguments))
+
+) ; labels
+
+
+;; semi-private: used by the function generated by 'format-function' and the expansion of 'formatter'
+(defun m%print-roman (arguments output-stream colonp)
+  (let ((n (car arguments)))
+    (unless (and (numberp n) (= n (truncate n)))
+      (jerror "format - not an integer: '%s'" n))
+    (unless (<= 1 n (if colonp 4999 3999))
+      (jerror "format - number too large to print in Roman numerals: '%s'" n))
+
+    (write (if colonp
+               (string-join
+                 ""
+                 (svref #("" "M" "MM" "MMM" "MMMM")                               (floor n            1000))
+                 (svref #("" "C" "CC" "CCC" "CCCC" "D" "DC" "DCC" "DCCC" "DCCCC") (floor (rem n 1000) 100))
+                 (svref #("" "X" "XX" "XXX" "XXXX" "L" "LX" "LXX" "LXXX" "LXXXX") (floor (rem n 100)  10))
+                 (svref #("" "I" "II" "III" "IIII" "V" "VI" "VII" "VIII" "VIIII")        (rem n 10)))
+               (string-join
+                 ""
+                 (svref #("" "M" "MM" "MMM")                                 (floor n            1000))
+                 (svref #("" "C" "CC" "CCC" "CD" "D" "DC" "DCC" "DCCC" "CM") (floor (rem n 1000) 100))
+                 (svref #("" "X" "XX" "XXX" "XL" "L" "LX" "LXX" "LXXX" "XC") (floor (rem n 100)  10))
+                 (svref #("" "I" "II" "III" "IV" "V" "VI" "VII" "VIII" "IX")        (rem n 10))))
+           nil
+           output-stream))
+
+  (cdr arguments))
+
+
+;; semi-private: used by the expansion of 'formatter'
+(defun m%print-float (arguments output-stream jformat-string)
+  (if (numberp (car arguments))
+      (jformat-locale output-stream "en-US" jformat-string (* 1.0 (car arguments)))
+      (write (car arguments) nil output-stream))
+  (cdr arguments))
+
+
+;; semi-private: used by the function generated by 'format-function' and the expansion of 'formatter'
+(defun m%print-obj (arguments output-stream escapep colonp atp params)
+  (let* ((mincol (prefix-int-with-default 0))
+         (params (cdr params))
+         (colinc (prefix-int-with-default 1))
+         (params (cdr params))
+         (minpad (prefix-int-with-default 0))
+         (params (cdr params))
+         (padchar (prefix-char-with-default #\ ))
+         (arg (car arguments))
+         (str (cond (arg    (write-to-string arg escapep))
+                    (colonp "()")
+                    (t      "nil"))))
+
+    (unless atp
+      (write str nil output-stream))
+
+    (dotimes (i (+ minpad (* (ceiling (- mincol minpad (slength str)) colinc) colinc)))
+      (write padchar nil output-stream))
+
+    (when atp
+      (write str nil output-stream)))
+  (cdr arguments))
+
+
+(labels ((parse-control-string (control-string)
+           ;; used by the macro 'formatter' and by the function 'm%format-function'
+           (let* ((result (list ()))
+                  (append-to result)
+                  (i 0)
+                  (j nil)
+                  (control-string-length (slength control-string)))
+             (when (> control-string-length 0)
+               (labels ((collect (obj)
+                          (setq append-to (cdr (rplacd append-to (list obj)))))
+
+                        (start ()
+                          (when (< i control-string-length)
+                            (when (eql (sref control-string i) #\~)
+                              (and j (< j i) (collect (string-subseq control-string j i)))
+                              (incf i)
+                              (let* (code colonp atp arg
+                                     (args (list ()))
+                                     (append-to-args args))
+                                (labels ((collect-arg (arg)
+                                           (setq append-to-args (cdr (rplacd append-to-args (list arg)))))
+
+                                         (next ()
+                                           (setq code (sref control-string i))
+                                           (case code
+                                             (#\'
+                                              (setq arg (sref control-string (incf i)))
+                                              (incf i)
+                                              (next))
+
+                                             (#\,
+                                              (collect-arg arg)
+                                              (setq arg nil)
+                                              (incf i)
+                                              (next))
+
+                                             (#\:
+                                              (setq colonp t)
+                                              (incf i)
+                                              (next))
+
+                                             (#\@
+                                              (setq atp t)
+                                              (incf i)
+                                              (next))
+
+                                             ((#\+ #\- #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
+                                              (setq arg 0)
+                                              (let ((sign 1))
+                                                (if (eql code #\+)
+                                                    (setq i (1+ i) code (sref control-string i))
+                                                    (when (eql code #\-)
+                                                      (setq i (1+ i) code (sref control-string i) sign -1)))
+                                                (let loop ((code (char-code code)))
+                                                  (when (and (>= code 48) (<= code 57))
+                                                    (setq arg (+ (* arg 10) (- code 48))
+                                                          i (1+ i))
+                                                    (when (< i control-string-length)
+                                                      (loop (char-code (sref control-string i))))))
+                                                (setq arg (truncate arg sign)))
+                                              (next))
+
+                                             ((#\v #\V)
+                                              (setq arg #\v)
+                                              (incf i)
+                                              (next))
+
+                                             (#\Newline
+                                              (let loop ()
+                                                (when (and (< (1+ i) control-string-length)
+                                                           (member (sref control-string (1+ i)) '(#\  #\Tab #\Vt #\Page #\Return)))
+                                                  (incf i)
+                                                  (loop))))
+
+                                             (t
+                                              (when arg
+                                                (collect-arg arg)
+                                                (setq arg nil))
+                                              (collect (list* code colonp atp (cdr args)))))))
+                                  (next)))
+
+                              (setf j (1+ i)))
+                            (unless j (setf j i))
+                            (incf i)
+                            (start))
+                          (when (< j i)
+                            (collect (string-subseq control-string j i))
+                            (setq j i))))
+                 (start)))
+
+             (cdr result)))
+
+         (float-fmtstring (c atp w d)
+           (let ((jformat-string (make-array 0 'character t)))
+             (vector-add jformat-string #\%)
+             (when atp (vector-add jformat-string #\+))
+             (when w
+               (dovector (w (write-to-string (m%nonneg-integer-for-format w)))
+                         (vector-add jformat-string w)))
+             (when d
+               (vector-add jformat-string #\.)
+               (dovector (d (write-to-string (m%nonneg-integer-for-format d)))
+                         (vector-add jformat-string d)))
+             (vector-add jformat-string c)
+             jformat-string)))
+
+
+;; semi-private: used by the expansion of 'formatter'
+(defun m%print-float-fmt (arguments output-stream c atp w d)
+  (when (eql #\v w)
+    (setq w (require-argument))
+    (setq arguments (cdr arguments)))
+  (when (eql #\v d)
+    (setq d (require-argument))
+    (setq arguments (cdr arguments)))
+
+  (let ((arg (car arguments)))
+    (if (numberp arg)
+        (jformat-locale output-stream "en-US" (float-fmtstring c atp w d) (* 1.0 arg))
+        (write arg nil output-stream)))
+  (cdr arguments))
+
+
+;;; = Macro: formatter
+;;;     (formatter control-string) -> function
+;;;
+;;; Since: 1.5
+;;;
+;;; Returns a function with the argument list `(destination . args)`
+;;; that writes to `destination` and returns unused arguments as a list.
+;;;
+;;; Sample usage:
+;;;
+;;;     (let ((dest (make-array 0 'character t)))
+;;;       (values ((formatter "~&~A~A") dest 'a 'b 'c)
+;;;               dest))
+;;;
+;;;     -> (c)
+;;;     -> "
+;;;     ab"
+(defmacro formatter (control-string)
+  (let* ((body (list ()))
+         (append-to body))
+
+    (labels ((require-argument-sexp ()
+               `(if arguments
+                    (m%nonneg-integer-for-format (car arguments))
+                    (jerror 'simple-error "format - not enough arguments")))
+
+             (collect (form)
+               (setq append-to (cdr (rplacd append-to (list form)))))
+
+             (collect-shift (form)
+               (collect form)
+               (collect `(setq arguments (cdr arguments))))
+
+             (collect-setq (form)
+               (collect `(setq arguments ,form)))
+
+             (do-char (c params)
+               (case (car params)
+                 ((nil 1)
+                  (collect `(write ,c nil output-stream)))
+                 (#\v
+                  (collect `(progn
+                              (write (vector-fill (make-array ,(require-argument-sexp) 'character) ,c) nil output-stream)
+                              (setq arguments (cdr arguments)))))
+                 (t
+                  (collect `(write ,(vector-fill (make-array (m%nonneg-integer-for-format (car params)) 'character) c) nil output-stream)))))
+
+             (do-integer (base colonp atp params)
+               (collect-setq (if (or* colonp atp params)
+                                 `(m%print-integer        arguments output-stream ,base ,colonp ,atp ',params)
+                                 `(m%print-simple-integer arguments output-stream ,base))))
+
+             (do-float (c atp params)
+               (let ((w (car params))
+                     (d (cadr params)))
+                 (if (or* (eql #\v w) (eql #\v d))
+                     (collect-setq `(m%print-float-fmt arguments output-stream ,c ,atp ',w ',d))
+                     (collect-setq `(m%print-float arguments output-stream ,(float-fmtstring c atp w d)))))))
+
+      `(lambda (output-stream . orig-arguments)
+         (let ((arguments orig-arguments))
+           ,@(dolist (elem (parse-control-string control-string) (cdr body))
+               (if (stringp elem)
+                   (collect `(write ,elem nil output-stream))
+                   (let ((colonp (cadr elem))
+                         (atp (caddr elem))
+                         (params (cdddr elem)))
+
+                     (case (car elem)
+
+                       ;; Basic output
+
+                       ;; Tilde C: Character
+                       ;; The next arg should be a character.
+                       ;; ~c and ~:c will print the character, ~@c and ~@:c will print a #\... sequence,
+                       ;; (i.e. : is ignored)
+                       ((#\c #\C)
+                        (collect-shift `(write (car arguments) ,atp output-stream)))
+
+                       ;; Tilde Percent: Newline
+                       ;; ~n% outputs n newlines. No arg is used.
+                       (#\%
+                        (do-char #\Newline params))
+
+                       ;; Tilde Ampersand: Fresh-Line
+                       ;; ~& outputs a newline if not already at the beginning of a line.
+                       ;; ~n& outputs a newline if not already at the beginning of a line followed by n-1 newlines.
+                       ;; No arg is used.
+                       (#\&
+                        (case (car params)
+                          (0)
+                          ((nil 1)
+                           (collect `(fresh-line output-stream)))
+                          (2
+                           (collect `(progn (fresh-line output-stream) (write #\Newline nil output-stream))))
+                          (#\v
+                           (collect `(let ((n ,(require-argument-sexp)))
+                                       (when (> n 0)
+                                         (fresh-line output-stream)
+                                         (write (vector-fill (make-array (1- n) 'character) #\Newline) nil output-stream))
+                                       (setq arguments (cdr arguments)))))
+                          (t
+                           (collect `(progn
+                                       (fresh-line output-stream)
+                                       (write ,(vector-fill (make-array (1- (m%nonneg-integer-for-format (car params))) 'character) #\Newline) nil output-stream))))))
+
+                       ;; Tilde Vertical-Bar: Page
+                       ;; This outputs a page separator character, if possible. ~n| does this n times.
+                       (#\|
+                        (do-char #\Page params))
+
+                       ;; Tilde Tilde: Tilde
+                       ;; This outputs a tilde. ~n~ outputs n tildes.
+                       (#\~
+                        (do-char #\~ params))
+
+
+                       ;; Radix Control
+
+                       ;; Tilde R: Radix
+                       ;; ~nR prints arg in radix n. sbcl supports 2..36
+                       ((#\r #\R)
+                        (if (car params)
+                            (do-integer (car params) colonp atp (cdr params))
+                            (collect-setq
+                             (if atp
+                                 `(m%print-roman arguments output-stream ,colonp)
+                                 (jerror "format - english numbers are not supported")))))
+
+                       ;; Tilde D: Decimal
+                       ;; ~mincolD uses a column width of mincol; spaces are inserted on the left
+                       ;; if the number requires fewer than mincol columns for its digits and sign.
+                       ;; ~mincol,padcharD uses padchar as the pad character instead of space.
+                       ;; If arg is not an integer, it is printed in ~A format and decimal base.
+                       ;; The @ modifier causes the number's sign to be printed always; the default
+                       ;; is to print it only if the number is negative. The : modifier is ignored.
+                       ((#\d #\D)
+                        (if (or* colonp params)
+                            (collect-setq `(m%print-integer arguments output-stream 10 ,colonp ,atp ',params))
+                            (if atp
+                                (collect-setq `(let ((arg (car arguments)))
+                                                 (and (integerp arg)
+                                                      (>= arg 0)
+                                                      (write #\+ nil output-stream))
+                                                 (write arg nil output-stream)
+                                                 (cdr arguments)))
+                                (collect-shift `(write (car arguments) nil output-stream)))))
+
+                       ;; Tilde B: Binary
+                       ((#\b #\B)
+                        (do-integer 2 colonp atp params))
+
+                       ;; Tilde O: Octal
+                       ((#\o #\O)
+                        (do-integer 8 colonp atp params))
+
+                       ;; Tilde X: Hexadecimal
+                       ((#\x #\X)
+                        (do-integer 16 colonp atp params))
+
+
+                       ;; Floating point
+
+                       ;; Tilde E: Exponential Floating-Point
+                       ((#\e #\E)
+                        (do-float #\e atp params))
+
+                       ;; Tilde F: Fixed-Format Floating-Point
+                       ((#\f #\F)
+                        (do-float #\f atp params))
+
+                       ;; Tilde G: General Floating-Point
+                       ((#\g #\G)
+                        (if params
+                            (do-float #\g atp params)
+                            (collect-shift (if atp
+                                               `(let ((arg (car arguments)))
+                                                  (if (numberp arg)
+                                                      (progn
+                                                        (if (>= arg 0)
+                                                            (write #\+ nil output-stream))
+                                                        (write (* 1.0 arg) nil output-stream))
+                                                      (write arg nil output-stream)))
+                                               `(write (if (numberp (car arguments))
+                                                           (* 1.0 (car arguments))
+                                                           (car arguments))
+                                                       nil output-stream)))))
+
+
+                       ;; Printer Operations
+
+                       ;; Tilde A: Aesthetic
+                       ((#\a #\A)
+                        (if (or* colonp (car params))
+                            (collect-setq `(m%print-obj arguments output-stream nil ,colonp ,atp ',params))
+                            (collect-shift `(write (car arguments) nil output-stream))))
+
+                       ;; Tilde S: Standard
+                       ((#\s #\S)
+                        (if (or* colonp (car params))
+                            (collect-setq `(m%print-obj arguments output-stream t ,colonp ,atp ',params))
+                            (collect-shift `(write (car arguments) t output-stream))))
+
+                       ;; Tilde W: Write
+                       ((#\w #\W)
+                        ;;(when params (jerror "format - too many arguments, format character W accepts 0"))
+                        (collect-shift `(write (car arguments) t output-stream)))
+
+
+                       ;; Layout Control
+
+                       ;; Tilde T: Tabulate
+                       ((#\t #\T)
+                        (let* ((colnum (case (car params)
+                                         ((nil 1) 1)
+                                         (#\v (require-argument-sexp))
+                                         (t m%nonneg-integer-for-format (car params))))
+                               (params (cdr params))
+                               (colinc (case (car params)
+                                         ((nil 1) 1)
+                                         (#\v (require-argument-sexp))
+                                         (t m%nonneg-integer-for-format (car params)))))
+                          (collect `(tabulate ,atp ,colnum ,colinc output-stream))))
+
+
+                       ;; Control flow
+
+                       ;; Tilde *: Goto
+                       ;; @... absolute, :... backwards
+                       (#\*
+                        (cond (atp
+                               (when colonp (jerror 'simple-error "can't use both : and @ modifiers with ~*"))
+                               (case (car params)
+                                 ((nil) (collect `(setq arguments orig-arguments)))
+                                 (#\v   (collect `(setq arguments (nthcdr ,(require-argument-sexp) orig-arguments))))
+                                 (t     (collect `(setq arguments (nthcdr ,(car params) orig-arguments))))))
+
+                              (colonp
+                               (case (car params)
+                                 ((nil) (collect `(setq arguments (last orig-arguments (+ (list-length arguments) 1)))))
+                                 (#\v   (collect `(setq arguments (last orig-arguments (+ (list-length arguments) ,(require-argument-sexp))))))
+                                 (t     (collect `(setq arguments (last orig-arguments (+ (list-length arguments) ,(car params))))))))
+
+                              (t
+                               (case (car params)
+                                 ((nil) (collect `(setq arguments (cdr arguments))))
+                                 (#\v   (collect `(setq arguments (nthcdr ,(require-argument-sexp) (cdr arguments)))))
+                                 (t     (collect `(setq arguments (nthcdr ,(car params) arguments))))))))
+
+
+                       (t (jerror "format - unimplemented format character '%s'" (car elem)))))))
+
+           ,'arguments)))))
+
+
+;; private: used by the function 'format'
+(defun m%format-function (control-string)
+  (lambda (output-stream . orig-arguments)
+    (let ((arguments orig-arguments))
+      (labels ((do-char (c params)
+                 (case (car params)
+                   ((1 nil)
+                    (write c nil output-stream))
+                   (t
+                    (write (vector-fill (make-array (prefix-int-with-default 1) 'character) c) nil output-stream))))
+
+               (do-integer (base colonp atp params)
+                 (setq arguments (m%print-integer arguments output-stream base colonp atp params)))
+
+               (do-float (c atp params)
+                 (let ((w (prefix-param (car params)))
+                       (d (prefix-param (cadr params)))
+                       (arg (car arguments)))
+                   (if (numberp arg)
+                       (jformat-locale output-stream "en-US" (float-fmtstring c atp w d) (* 1.0 arg))
+                       (write arg nil output-stream)))
+                 (setq arguments (cdr arguments)))
+
+               (do-general-float (atp params)
+                 (let ((w (prefix-param (car params)))
+                       (d (prefix-param (cadr params)))
+                       (arg (car arguments)))
+                   (if (numberp arg)
+                       (if params
+                           (jformat-locale output-stream "en-US" (float-fmtstring atp w d) (* 1.0 arg))
+                           (progn
+                             (and atp (>= arg 0) (write #\+ nil output-stream))
+                             (write (* 1.0 arg) nil output-stream)))
+                       (write arg nil output-stream)))
+                 (setq arguments (cdr arguments))))
+
+        (dolist (elem (parse-control-string control-string))
+          (if (stringp elem)
+              (write elem nil output-stream)
+              (let ((colonp (cadr elem))
+                    (atp (caddr elem))
+                    (params (cdddr elem)))
+
+                (case (car elem)
+
+                  ;; Basic output
+
+                  ;; Tilde C: Character
+                  ;; The next arg should be a character.
+                  ;; ~c and ~:c will print the character, ~@c and ~@:c will print a #\... sequence,
+                  ;; (i.e. : is ignored)
+                  ((#\c #\C)
+                   (write (car arguments) atp output-stream)
+                   (setq arguments (cdr arguments)))
+
+                  ;; Tilde Percent: Newline
+                  ;; ~n% outputs n newlines. No arg is used.
+                  (#\%
+                   (do-char #\Newline params))
+
+                  ;; Tilde Ampersand: Fresh-Line
+                  ;; ~& outputs a newline if not already at the beginning of a line.
+                  ;; ~n& outputs a newline if not already at the beginning of a line followed by n-1 newlines.
+                  ;; No arg is used.
+                  (#\&
+                   (case (car params)
+                     (0)
+                     ((nil 1)
+                      (fresh-line output-stream))
+                     (2
+                      (progn (fresh-line output-stream) (write #\Newline nil output-stream)))
+                     (t
+                      (progn
+                        (fresh-line output-stream)
+                        (write (vector-fill (make-array (1- (prefix-int-with-default 1)) 'character) #\Newline) nil output-stream)))))
+
+                  ;; Tilde Vertical-Bar: Page
+                  ;; This outputs a page separator character, if possible. ~n| does this n times.
+                  (#\|
+                   (do-char #\Page params))
+
+                  ;; Tilde Tilde: Tilde
+                  ;; This outputs a tilde. ~n~ outputs n tildes.
+                  (#\~
+                   (do-char #\~ params))
+
+
+                  ;; Radix Control
+
+                  ;; Tilde R: Radix
+                  ;; ~nR prints arg in radix n. sbcl supports 2..36
+                  ((#\r #\R)
+                   (if (car params)
+                       (setq arguments (m%print-integer arguments output-stream (car params) colonp atp (cdr params)))
+                       (if atp
+                           (setq arguments (m%print-roman arguments output-stream colonp))
+                           (jerror "format - english numbers are not supported"))))
+
+                  ;; Tilde D: Decimal
+                  ;; ~mincolD uses a column width of mincol; spaces are inserted on the left
+                  ;; if the number requires fewer than mincol columns for its digits and sign.
+                  ;; ~mincol,padcharD uses padchar as the pad character instead of space.
+                  ;; If arg is not an integer, it is printed in ~A format and decimal base.
+                  ;; The @ modifier causes the number's sign to be printed always; the default
+                  ;; is to print it only if the number is negative. The : modifier is ignored.
+                  ((#\d #\D)
+                   (do-integer 10 colonp atp params))
+
+                  ;; Tilde B: Binary
+                  ((#\b #\B)
+                   (do-integer 2 colonp atp params))
+
+                  ;; Tilde O: Octal
+                  ((#\o #\O)
+                   (do-integer 8 colonp atp params))
+
+                  ;; Tilde X: Hexadecimal
+                  ((#\x #\X)
+                   (do-integer 16 colonp atp params))
+
+
+                  ;; Floating point
+
+                  ;; Tilde E: Exponential Floating-Point
+                  ((#\e #\E)
+                   (do-float #\e atp params))
+
+                  ;; Tilde F: Fixed-Format Floating-Point
+                  ((#\f #\F)
+                   (do-float #\f atp params))
+
+                  ;; Tilde G: General Floating-Point
+                  ((#\g #\G)
+                   (do-general-float atp params))
+
+
+                  ;; Printer Operations
+
+                  ;; Tilde A: Aesthetic
+                  ((#\a #\A)
+                   (if (or* colonp (car params))
+                       (setq arguments (m%print-obj arguments output-stream nil colonp atp params))
+                       (progn (write (car arguments) nil output-stream)
+                              (setq arguments (cdr arguments)))))
+
+                  ;; Tilde S: Standard
+                  ((#\s #\S)
+                   (if (or* colonp (car params))
+                       (setq arguments (m%print-obj arguments output-stream t colonp atp params))
+                       (progn (write (car arguments) t output-stream)
+                              (setq arguments (cdr arguments)))))
+
+                  ;; Tilde W: Write
+                  ((#\w #\W)
+                   ;;(when params (jerror "format - too many arguments, format character C accepts 0"))
+                   (write (car arguments) t output-stream)
+                   (setq arguments (cdr arguments)))
+
+
+                  ;; Layout Control
+
+                  ;; Tilde T: Tabulate
+                  ((#\t #\T)
+                   (let* ((colnum (prefix-int-with-default 1))
+                          (params (cdr params))
+                          (colinc (prefix-int-with-default 1)))
+                     (tabulate atp colnum colinc output-stream)))
+
+
+                  ;; Control flow
+
+                  ;; Tilde *: Goto
+                  ;; @... absolute, :... backwards
+                  (#\*
+                   (cond (atp
+                          (when colonp (jerror 'simple-error "can't use both : and @ modifiers with ~*"))
+                          (case (car params)
+                            ((nil) (setq arguments orig-arguments))
+                            (#\v   (setq arguments (nthcdr (m%nonneg-integer-for-format (require-argument)) orig-arguments)))
+                            (t     (setq arguments (nthcdr (car params) orig-arguments)))))
+
+                         (colonp
+                          (case (car params)
+                            ((nil) (setq arguments (last orig-arguments (+ (list-length arguments) 1))))
+                            (#\v   (setq arguments (last orig-arguments (+ (list-length arguments) (m%nonneg-integer-for-format (require-argument))))))
+                            (t     (setq arguments (last orig-arguments (+ (list-length arguments) (car params)))))))
+
+                         (t
+                          (case (car params)
+                            ((nil) (setq arguments (cdr arguments)))
+                            (#\v   (setq arguments (nthcdr (m%nonneg-integer-for-format (require-argument)) (cdr arguments))))
+                            (t     (setq arguments (nthcdr (car params) arguments)))))))
+
+
+                  (t (jerror "format - unimplemented format character '%s'" (car elem)))))))))))
+
+) ; labels
+) ; macrolet
+
+
+(defun format (destination control-string . args)
+  (let ((f (if (functionp control-string)
+               control-string
+               (m%format-function control-string))))
+
+    (if destination
+
+        (progn
+          (apply f (cons destination args))
+          nil)
+
+        (with-output-to-string (destination)
+          (apply f (cons destination args))))))
+
+
+;;; = Function: error
+;;;     (error [condition-type] controlstring-or-formatfunction args*) -> |
+;;;
+;;; Since: 1.5
+;;;
+;;; A simplified subset of Common Lisp's function `error`.
+(defun error (datum . args)
+  (if (symbolp datum)
+      (jerror datum (apply format (cons nil args)))
+      (jerror 'simple-error (apply format (list* nil datum args)))))
+
+
 (defmacro m%def-macro-fun)
+
 (provide "mlib")

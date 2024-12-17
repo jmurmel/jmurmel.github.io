@@ -68,6 +68,8 @@ mlib provides the following Common Lisp-like functions and macros:
 - I/O
     - [write-char](#function-write-char)
     - [terpri, prin1, princ, print](#function-terpri-prin1-princ-print), [pprint](#function-pprint)
+    - [format](#function-format), [formatter](#macro-formatter)
+    - [error](#function-error)
     - [with-output-to-string](#macro-with-output-to-string)
 - misc
     - [time](#macro-time)
@@ -112,6 +114,8 @@ as well as the following additional functions and macros:
     - [scan](#function-scan), [scan-multiple](#function-scan-multiple), [scan-concat](#function-scan-concat)
 - strings
     - [string-trim](#function-string-trim), [string-subseq](#function-string-subseq), [string-replace](#function-string-replace), [string-split](#function-string-split), [string-join](#function-string-join)
+- hash tables
+    - [frequencies](#function-frequencies)
 
 ## Description of functions and macros
 
@@ -146,22 +150,26 @@ Logical not.
 
 ### Macro: and
     (and forms*) -> result
+    (and* forms*) -> boolean
 
 Since: 1.1
 
 Short-circuiting logical and.
 Return `t` if no forms were given,
 otherwise return the values resulting from the evaluation of the last form unless any of the `forms` evaluate to `nil`,
-`nil` otherwise.
+`nil` otherwise,
+or in case of `and*`: `t` or `nil` as appropriate.
 
 ### Macro: or
     (or forms*) -> result
+    (or* forms*) -> boolean
 
 Since: 1.1
 
 Short-circuiting logical or.
 Return `nil` unless any of the `forms` evaluate to non-nil,
-the result of the first form returning non-nil otherwise.
+the result of the first form returning non-nil otherwise,
+or in case of `or*`: `t` or `nil` as appropriate.
 
 ### Macro: prog1, prog2
     (prog1 first-form more-forms*) -> result-1
@@ -170,7 +178,7 @@ the result of the first form returning non-nil otherwise.
 Since: 1.1
 
 ### Macro: case
-     (case keyform (keys forms*)* (t forms*)?) -> result
+     (case keyform (keys forms*)* [(t forms*)]) -> result
 
 Since: 1.1
 
@@ -183,7 +191,7 @@ A clause with a key that is a single `t` is used as the default clause
 if no key matches.
 
 ### Macro: typecase
-     (typecase keyform (type forms*)* (t forms*)?) -> result
+     (typecase keyform (type forms*)* [(t forms*)]) -> result
 
 Since: 1.3
 
@@ -282,7 +290,7 @@ Returns the length of `list` if it is a string or proper list.
 Returns `nil` if `list-or-string` is a circular list.
 
 ### Function: last
-    (last lst n?) -> tail
+    (last lst [n]) -> tail
 
 Since: 1.2
 
@@ -539,7 +547,7 @@ stopping only when non-conses are encountered.
 copy-tree does not preserve circularities and the sharing of substructure.
 
 ### Function: butlast
-    (butlast lst n?) -> result-list
+    (butlast lst [n]) -> result-list
 
 Since: 1.4.5
 
@@ -548,7 +556,7 @@ If `n` is not supplied, its value is 1. If there are fewer than `n` conses in `l
 `nil` is returned.
 
 ### Function: nbutlast
-    (nbutlast lst n?) -> result-list
+    (nbutlast lst [n]) -> result-list
 
 Since: 1.4.5
 
@@ -650,7 +658,7 @@ If more than one pair is supplied then the assignments of new values to places a
 Similar to CL's `psetf`.
 
 ### Macro: shiftf
-    (shiftf place+ newvalue) -> old-values-1
+    (shiftf place+ newvalues) -> old-values-1
 
 Since: 1.4.8
 
@@ -672,8 +680,8 @@ If a place produces fewer values than there are store variables, the missing val
 Similar to CL's `rotatef`.
 
 ### Macro: incf, decf
-    (incf place delta-form*) -> new-value
-    (decf place delta-form*) -> new-value
+    (incf place [delta-form]) -> new-value
+    (decf place [delta-form]) -> new-value
 
 Since: 1.1
 
@@ -688,8 +696,8 @@ Without `delta-form` the return type of `incf` and `decf` will be
 the type of the number in `place`, otherwise the return type will be float.
 
 ### Macro: *f, /f
-    (*f place delta-form*) -> new-value
-    (/f place delta-form*) -> new-value
+    (*f place [delta-form]) -> new-value
+    (/f place [delta-form]) -> new-value
 
 Since: 1.1
 
@@ -707,16 +715,16 @@ Without `delta-form` the return type of `*f` will be
 the type of the number in `place`, otherwise the return type will be float.
 
 ### Macro: +f, -f
-    (+f place delta-form*) -> new-value
-    (-f place delta-form*) -> new-value
+    (+f place [delta-form]) -> new-value
+    (-f place [delta-form]) -> new-value
 
 Since: 1.1
 
 `+f` and `+f` are used for adding and subtracting
 to/ from the value of `place`, respectively.
 
-The delta is added (in the case of `*f`) to
-or subtracted (in the case of `/f`) from the number in `place`
+The delta is added (in the case of `+f`) to
+or subtracted (in the case of `-f`) from the number in `place`
 and the result is stored in `place`.
 
 Without `delta-form` `-f` will return the negation of the number in `place`,
@@ -1013,6 +1021,19 @@ Since: 1.4
 
 Similar to CL's `maphash` but modifying the hash-table
 from within `function` is not supported.
+
+### Function: frequencies
+    (frequencies sequence-or-generator [test]) -> hash-table
+
+Since: 1.5
+
+Count the number of times each value occurs in `sequence-or-generator`
+according to the test function `test` which defaults to `eql`.
+
+Sample usage:
+
+    (frequencies ()) ; ==> nil
+    (frequencies #(1 2 3 1 2 1)) ; ==> #H(eql 1 3 2 2 3 1)
 
 ### Function: identity
     (identity object) -> object
@@ -1383,4 +1404,55 @@ Return the values of a plist.
 Sample usage:
 
     (plist-values '(a 1 b 2 c 3)) ; ==> (1 2 3)
+
+### Function: format
+    (format destination control-string args*) -> result
+
+Since: 1.5
+
+A simplified subset of Common Lisp's function `format`.
+
+Note that this simplified `format` does not use or set CL's printer variables
+such as `*print-base*`, `*print-circle*`, ... .
+
+Only the format characters `C, %, &, |, ~, *, B ,D, O, R, X, E, F, G, A, S, W, T` and Tilde-Newline are supported.
+
+`C` supports the modifier `@` for printing `#\`-style escaping.
+
+`B, D, O, R, X` support `mincol, padchar, commachar` and `comma-interval`,
+the modifier `@` for always printing the sign and the modifier `:` for grouping digits.
+
+`R` does not support printing english numbers (giving the base, `@` or `:@` is required).
+
+`E, F, G`: CL's full `format` is `~w,d,k,overflowchar,padcharF`, this subset only supports `~w,dF`
+and the modifier `@` for always printing the sign.
+
+`A` and `S` support `~mincol,colinc,minpad,padcharA` for padding, `:`, and the modifier `@` for left-padding.
+
+`T` supports `@` for relative tabbing but ignores the modifier colon (`:`).
+
+### Macro: formatter
+    (formatter control-string) -> function
+
+Since: 1.5
+
+Returns a function with the argument list `(destination . args)`
+that writes to `destination` and returns unused arguments as a list.
+
+Sample usage:
+
+    (let ((dest (make-array 0 'character t)))
+      (values ((formatter "~&~A~A") dest 'a 'b 'c)
+              dest))
+
+    -> (c)
+    -> "
+    ab"
+
+### Function: error
+    (error [condition-type] controlstring-or-formatfunction args*) -> |
+
+Since: 1.5
+
+A simplified subset of Common Lisp's function `error`.
 </textarea>

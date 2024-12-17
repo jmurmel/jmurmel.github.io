@@ -62,13 +62,13 @@ Additional functions that can be loaded with `(require "mlib")`
 
 "Hello, World!" program written in Murmel:
 
-    (format t "Hello, World!")
+    (jformat t "Hello, World!")
 
 The program text above when run in the REPL should print the famous
 
     Hello, World!
 
-followed by the result of `format`
+followed by the result of `jformat`
 
     ==> nil
 
@@ -208,7 +208,7 @@ of Lisp pp 62"):
 > T is a symbol and the default "true" value used by predicates that
 > are not semi-predicates (i.e., that don’t return "meaningful" values
 > when they are true.) EVAL of T is T. T may not be used as a variable.
-> T is a keyword recognized by certain functions, such as FORMAT.
+> T is a keyword recognized by certain functions, such as JFORMAT.
 
 
 ### internal-time-units-per-second
@@ -479,10 +479,10 @@ In addition to `nil` and `t` the symbols of the special forms are reserved, i.e.
 may not be used as a function nor as a variable:
 
     nil, t,
-    lambda, quote, cond, labels, if, define, defun, let, let*, letrec, macrolet,
+    lambda, quote, cond, labels, if, define, defun, let, let*, letrec,
     setq, progn, catch, thwrow, unwind-protect, try,
     multiple-value-bind, multiple-value-call,
-    defmacro, declaim, load, require, provide
+    macrolet, defmacro, declaim, load, require, provide
 
 
 ## Variables and Scope 
@@ -499,9 +499,9 @@ last to the end of the program (the symbol's binding may be
 temporarily replaced by a local or dynamic binding, though).
 
 Murmel's local bindings are lexical, i.e. a symbol is bound to
-a newly created variable when a let/let\*/letrec/lambda form
+a newly created variable when a `let/let*/letrec/lambda` form
 is evaluated. The symbol's binding as well as the associated variable
-are removed when leaving the lexical scope of the `let/let\*/letrec/lambda`
+are removed when leaving the lexical scope of the `let/let*/letrec/lambda`
 form, restoring any previously existing binding (which may have
 been local or global).
 Except: `let* dynamic` will treat global symbols as "special", see below.
@@ -509,7 +509,7 @@ Except: `let* dynamic` will treat global symbols as "special", see below.
 
 ## Additional Special Forms 
 
-### (define symbol optional-object?) -> symbol
+### (define symbol [optional-object]) -> symbol
 
 `define` binds symbols in the global environment with
 memory locations that hold values.
@@ -526,9 +526,9 @@ The second argument to `define` is optional and defaults to `nil`.
     (define *global-var* 42)               ; ==> *gloval-var*
     (define f1 (lambda (p1 p2) (+ p1 p2))) ; ==> f1
 
-`define` forms can appear inside toplevel `let, let*, letrec, multiple-value-bind` forms.
+`define` forms can appear inside toplevel `let, let*, letrec, multiple-value-bind, labels` forms.
 
-### (defun symbol (params\*) docstring? forms\*) -> symbol
+### (defun symbol (params\*) [docstring] forms\*) -> symbol
 
 `defun` is a shorthand for defining functions:
 
@@ -541,8 +541,8 @@ Arguments to `defun` are not evaluated.
 
     (defun f2 (p1 p2) (+ p1 p2)) ; ==> f2
 
-`defun` forms that appear inside toplevel `let, let*, letrec, multiple-value-bind` forms
-will bind a globally visible symbol to a closure (aka let-over-lambda):
+`defun` forms can appear inside toplevel `let, let*, letrec, multiple-value-bind, labels` forms
+and will bind a globally visible symbol to a closure (aka let-over-lambda):
 
     (let ((counter 0))
       (defun pre-increment-counter ()
@@ -559,7 +559,7 @@ will bind a globally visible symbol to a closure (aka let-over-lambda):
     (pre-decrement-counter)  ; ==> 1
     (peek-counter)  ; ==> 1
 
-### (defmacro name (params\*) docstring? forms\*) -> symbol<br/>(defmacro name) -> prev-name
+### (defmacro name (params\*) [docstring] forms\*) -> symbol<br/>(defmacro name) -> prev-name
 
 `defmacro` defines a macro, similar to CL's `defmacro`.
 Macros are somewhat similar to functions:
@@ -594,7 +594,7 @@ in compiled mode variables must have been defined previously.
     (let ((b nil) (c nil))
       (setq a 1 b 2 c (+ a b))) ; ==> 3.0
 
-### (if condform form optionalform?) -> result
+### (if condform form [optionalform]) -> result
 
     (if nil 'YASSS! 'OHNOOO!!!) ; ==> OHNOOO!!!
 
@@ -602,12 +602,12 @@ in compiled mode variables must have been defined previously.
 
     (if t (progn (write 'abc) (write 'def)))
 
-### (cond (condform forms\*)\* (t forms\*)?) -> result
+### (cond (condform forms\*)\* [(t forms\*)]) -> result
 
 ### (labels ((symbol (params\*) forms\*)\*) forms\*) -> result
 
 
-### (let optsymbol? ((symbol bindingform)\*) bodyforms\*) -> result
+### (let [optsymbol] ((symbol bindingform)\*) bodyforms\*) -> result
 
 Works similar to CL's `let` with the addition
 of Scheme's "named let".
@@ -643,7 +643,7 @@ Example:
     (f)
 will print `(1 . 2)(11 . 1)(1 . 2)`.
 
-### (let* optsymbol? ((symbol bindingform)\*) bodyforms\*) -> result
+### (let* [optsymbol] ((symbol bindingform)\*) bodyforms\*) -> result
 
 Works like `let` (see above) with the addition:
 each `bindingform` "sees" the previous symbols. If multiple
@@ -670,7 +670,7 @@ I.e. `let* dynamic` treats globals as "special".
     (let* dynamic ((*g* 'temp)) (fun)) ; fun will write temp
     *g* ; ==> 'global
 
-### (letrec optsybol? ((symbol bindingform)\*) bodyforms\*) -> result
+### (letrec [optsybol] ((symbol bindingform)\*) bodyforms\*) -> result
 
 `letrec` works like `let` and `let*` except each bindingform "sees"
 all other let symbols as well as it's own symbol.
@@ -681,7 +681,7 @@ That way a let-bound variable could be a recursive lambda.
     (letrec ((x 1) (y (+ x 1))) (write y))
 
 
-### (macrolet ((symbol params docstring? forms)\*) forms\*) -> result
+### (macrolet ((symbol params [docstring] forms)\*) forms\*) -> result
 
 Since: 1.4.7
 
@@ -761,7 +761,7 @@ The symbols are bound to the values over the execution of the `bodyforms`,
 which make up an implicit progn.
 
     (multiple-value-bind (a b) (values 'Hello\, '\ World!)
-      (format nil "%s%s" a b))
+      (jformat nil "%s%s" a b))
     ==> "Hello, World!"
 
     (multiple-value-bind (a b . c) (values 1 2 3 4 5)
@@ -1221,7 +1221,7 @@ provides.
 
 ### read
 
-    (read eof-obj?) -> obj
+    (read [eof-obj]) -> obj
 
 Read an S-expression from stdin.
 
@@ -1274,7 +1274,40 @@ the optioal parameter `print-escape-p` can be used to turn off escaping:
     (writeln "Hello, World!" nil)
 
 
-### (write-to-string obj print-escape-p?) -> result-string
+### (fresh-line [dest]) -> boolean
+
+Since: 1.5
+
+Print an EOL character (-sequence) unless already at the beginning of line.
+
+
+### (tabulate relativep colnum colinc) -> nil
+
+Since: 1.5
+
+If `relativep` is nil then output sufficient spaces to move the cursor to column `colnum`.
+If the cursor was already at or beyond column `colnum` and `colinc` is non-zero,
+then output spaces to move the cursor to column `colnum+k*colinc` for the smallest positive integer `k` possible.
+
+If `relativep` is non-nil then output `colnum` spaces and then output the smallest non-negative number of additional spaces
+necessary to move the cursor to a column that is a multiple of `colinc`.
+
+
+### (make-string-writer) -> writer
+
+Since: 1.5
+
+Create a Lisp writer that writes to an internal buffer.
+The writer object can also be used as a string.
+
+    (define s (make-string-writer)) ; ==> s
+    (typep s 'string)               ; ==> t
+    (write 'abc nil s)              ; ==> abc
+    (slength s)                     ; ==> 3
+    (string->list s)                ; ==> (#\a #\b #\c)
+
+
+### (write-to-string obj [print-escape-p]) -> result-string
 
 Since: 1.4
 
@@ -1348,29 +1381,29 @@ If `translate-lineend-p` is omitted or non-nil then each #\Newline character
 will be written as the OS-dependent line-end character(-sequence).
 
 
-### (format dest formatstr args*), (format-locale dest locale formatstr args*)
+### (jformat dest formatstr args*), (jformat-locale dest locale formatstr args*)
 
 The first argument `dest` can be `t`, `nil` or an adjustable string.
 
-`format t` writes a formatted string to stdout and returns `nil`.
-`format`'s parameters work as with `java.lang.String.format()`
+`jformat t` writes a formatted string to stdout and returns `nil`.
+`jformat`'s parameters work as with `java.lang.String.jformat()`
 which is similar to C's `printf()`.
 
-    (format t
+    (jformat t
       "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
 
-`format-locale` works similar to format except it has an additional
+`jformat-locale` works similar to jformat except it has an additional
 second string parameter that should be a locale, `nil` means use Java's
 default locale.
 
-    (format-locale t "de-DE"
+    (jformat-locale t "de-DE"
       "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
 
-`format nil` and `format-locale nil` work similar
-to `format t` and `format-locale t` except they don't write to stdout
+`jformat nil` and `jformat-locale nil` work similar
+to `jformat t` and `jformat-locale t` except they don't write to stdout
 but return the string.
 
-    (format-locale nil "de-DE"
+    (jformat-locale nil "de-DE"
       "a string: %s, a number: %g, a newline:%n" "The String" 3.14)
 
 
@@ -1400,25 +1433,25 @@ will be `t`, e.g.:
     (macroexpand-1 '(add2 3))      ; --> (+ 3 2)
                                    ; --> t
 
-### (error datum . arguments) -> |
+### (jerror datum . arguments) -> |
 
-Since 1.4
+Since 1.5
 
 Similar to CL's `error`.
 `datum` can also be a condition,
 e.g. to re-raise a condition that is not handled.
 
-    (try (error 'simple-error "an error occurred") 'err)
+    (try (jerror 'simple-error "an error occurred") 'err)
       ; -> err
       ; -> simple-error - an error occurred
 
     (writeln (try (multiple-value-bind (result condition)
-                                       (try (error 'simple-error "an error occurred") 'err)
+                                       (try (jerror 'simple-error "an error occurred") 'err)
                     (if (eq result 'err)
                         (if (typep condition 'arithmetic-error)
                             (writeln "an arithmetic error occurred")
                             (progn (writeln "another error occurred, rethrowing")
-                                   (error condition)))
+                                   (jerror condition)))
                         (writeln "no error")))
 
                   'outer-err))  ; ==> outer-err
@@ -1543,13 +1576,13 @@ The numeric comparison operators take one or more number arguments.
     (< 1 2 3.0 4 5.0) ; ==> t
     (< 1 2 3 3 4 5)   ; ==> nil
 
-### (random limit random-state?) -> random-number
+### (random limit [random-state]) -> random-number
 
 Since: 1.4.3
 
 Similar to CL's `random`.
 
-### (make-random-state state?) -> new-state
+### (make-random-state [state]) -> new-state
 
 Since: 1.4.3
 
@@ -1800,15 +1833,17 @@ Murmel language:
 
 Compiler issues:
 
-- `define`/ `defun`/ `defmacro` only work as top level forms
-  or within `progn, let, let*, letrec, labels` or `multiple-value-bind` forms,
+- `define` and `defun` only work as top level forms
+  or within `progn, let, let*, letrec, labels, macrolet` or `multiple-value-bind` forms,
   other use as non-toplevel form will throw a "not-yet-implemented" compiler error.
+- `defmacro` only works as a top level form
+  or within `progn, macrolet` or `labels` forms,
 - `define`-ing an already `define`-d symbol is not supported
 - `macroexpand-1` is limited to quoted forms
 - macro expansion is only done at compiletime, e.g. `(defmacro m() 1) (eval '(m))`
   won't work
 - reassigning predefined primitives with `setq` is not supported, e.g.
-  `(setq trunc (lambda (p) (1+ p)))` is an error (and wouldn't make much sense)
+  `(setq truncate (lambda (p) (1+ p)))` is an error (and wouldn't make much sense)
 
 
 ## Copyright 
